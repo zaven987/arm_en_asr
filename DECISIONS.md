@@ -46,9 +46,9 @@
 ## 3. Current status
 
 - **Current milestone:** M0 — Planning (in progress).
-- **Done in M0:** questions asked and answered; decisions D1–D20 agreed; this file written.
+- **Done in M0:** questions asked and answered; decisions D1–D20 agreed (all, incl. D4 BuzzASR time-box); this file written and committed by Zaven; handover `handovers/001-planning-to-testmd.md` written.
 - **Next step:** agree the initial content of TEST.md with Zaven → write TEST.md → close M0 → start M1 (environment + model download).
-- **Open / pending:** D4 BuzzASR time-box (PROPOSED); client's real setup (section 7) to be confirmed after the walking skeleton.
+- **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
 
@@ -156,7 +156,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
   - Whisper large-v3-turbo int8 on MX550 GPU — ~0.8 GB VRAM, speed unknown.
   - Meta Omnilingual ASR CTC 300M — 1.3 GB fp32 (less in fp16 on GPU); strong average multilingual CER; no punctuation; needs fairseq2; Armenian score unknown.
   - **BuzzASR/armenian, quantized** (Whisper large-v3 fine-tune, best Armenian accuracy found: FLEURS WER ≈ 11.9 %, CER ≈ 3.7 %). Added on Zaven's question. Full fp16 (~3 GB) does not fit; int8 (~1.6–1.8 GB) or whisper.cpp q5 (~1.1 GB) might fit RAM, but the full 32-layer decoder likely breaks 5 s on the 15 W CPU, and int8 conversion itself needs loading ~3 GB fp16 weights.
-  - **PROPOSED:** BuzzASR quantized is a conditional candidate with a **30-minute time-box**; if it does not load and run within that, we record it as "rejected: hardware" and move on.
+  - BuzzASR quantized is a conditional candidate with a **30-minute time-box** (agreed 2026-10-28); if it does not load and run within that, we record it as "rejected: hardware" and move on.
 - Why: Armenian is low-resource; ASR quality is our biggest risk, so we choose the final model by measurement.
 
 **D5 — Skeleton MT: `Helsinki-NLP/opus-mt-hy-en` (Marian), via CTranslate2 int8.**

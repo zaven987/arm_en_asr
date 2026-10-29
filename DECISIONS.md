@@ -45,9 +45,9 @@
 
 ## 3. Current status
 
-- **Current milestone:** M0 — Planning (done once Zaven commits TEST.md).
-- **Done in M0:** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file written and committed by Zaven; handover `handovers/001-planning-to-testmd.md` written; TEST.md content agreed (2026-10-29) and written (tests T1.1–T1.6, T2–T6, all "not run").
-- **Next step:** Zaven commits TEST.md + this file → start M1 (environment + model download).
+- **Current milestone:** M1 — Environment (not started).
+- **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
+- **Next step:** M1 — Claude proposes a pinned `requirements.txt` for Zaven's approval (see `handovers/002-testmd-to-m1.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -214,6 +214,7 @@ app.py
 download_models.py
 src/arm_en_asr/{audio_capture,asr,translate,diarizer,pipeline,output}.py
 tests/
+tests/fixtures/           # small committed fixtures (D22)
 eval/meta/*.csv           # committed
 eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
@@ -237,7 +238,18 @@ DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 **D20 — Metrics (v0, baseline only, no quality thresholds yet).**
 - ASR: WER and CER. MT: chrF / BLEU + Zaven's manual 1–5 rating. Latency: median / p95 / max. Diarization: % of segments with correct label.
 - Only hard pass/fail: latency ≤ 5 s.
-- Tests: pytest. Initial tests: (1) each module alone on fixture audio, (2) end-to-end latency in file mode, (3) capture smoke test (open both devices 3 s, check audio is not silent), plus the D2 load test. Virtual-sink capture test after the skeleton (M9).
+- Tests: pytest. Initial tests: (1) each module alone on fixture audio, (2) end-to-end latency in file mode, (3) capture smoke test (open both devices 3 s, check audio is not silent), plus the D2 load test. Virtual-sink capture test after the skeleton (M9). (4) CLI fail-loudly checks (T6, added 2026-10-29). Full list and pass criteria: TEST.md.
+- Sanity limits (agreed 2026-10-29; not quality thresholds): ASR output ≥ 50 % Armenian-script letters (T1.2); capture "not silent" = RMS > −50 dBFS (T3); load test swap growth ≤ 100 MB (T4); diarizer keeps one label on 100 % of a solo clip's segments (T1.6).
+
+**D21 — File mode feeds WAVs at real-time speed.** (agreed 2026-10-29)
+- What: `--mic-wav` / `--system-wav` stream the file at the speed it was recorded, not as fast as possible.
+- Why: otherwise the whole file arrives instantly and the measured latency (D12) means nothing compared with live use.
+- Alternatives: feed as fast as possible (rejected: latency not comparable to live).
+
+**D22 — Test fixtures and test policy.** (agreed 2026-10-29)
+- What: small fixture files are committed in `tests/fixtures/`: a few seconds of FLEURS hy_am audio (CC-BY 4.0, attribution in `tests/fixtures/README.md`), generated silence, and ≥ 12 s continuous speech. A missing model or fixture makes a test **fail**, never skip. pytest markers: `hardware` (real devices + person present) and `slow` (load test), excluded from a plain `pytest` run.
+- Why: tests run from a fresh clone; skipping would be a silent fallback (working rule 2).
+- Alternatives: gitignored fixtures like `eval/clips/` (rejected: tests could not run from a fresh clone).
 
 ---
 
@@ -245,7 +257,7 @@ DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 
 | # | Milestone | Hours | Status |
 |---|---|---|---|
-| M0 | Planning: questions, DECISIONS.md, TEST.md | 1.5 | ☐ not done (in progress) |
+| M0 | Planning: questions, DECISIONS.md, TEST.md | 1.5 | ☑ done (2026-10-29) |
 | M1 | Environment (uv), `download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☐ not done |
 | M2 | Eval data v0: Zaven's 5–10 clips + CSVs; FLEURS subset | 2 | ☐ not done |
 | M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☐ not done |

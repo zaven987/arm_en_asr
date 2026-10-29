@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-10-28
+- Created: 2026-10-26 · Last updated: 2026-10-29
 
 ---
 
@@ -45,9 +45,9 @@
 
 ## 3. Current status
 
-- **Current milestone:** M0 — Planning (in progress).
-- **Done in M0:** questions asked and answered; decisions D1–D20 agreed (all, incl. D4 BuzzASR time-box); this file written and committed by Zaven; handover `handovers/001-planning-to-testmd.md` written.
-- **Next step:** agree the initial content of TEST.md with Zaven → write TEST.md → close M0 → start M1 (environment + model download).
+- **Current milestone:** M0 — Planning (done once Zaven commits TEST.md).
+- **Done in M0:** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file written and committed by Zaven; handover `handovers/001-planning-to-testmd.md` written; TEST.md content agreed (2026-10-29) and written (tests T1.1–T1.6, T2–T6, all "not run").
+- **Next step:** Zaven commits TEST.md + this file → start M1 (environment + model download).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -145,6 +145,8 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 **D2 — Load test.**
 - What: feed K simultaneous segments (from eval clips) with N = 1, 2, 3 ASR workers, with a real Meet/Zoom tab open. Record: peak RSS, swap use, per-segment latency (median / p95 / max), throughput (segments per minute).
 - Result: the largest N and K that keep RAM within limits and max latency ≤ 5 s → becomes our concurrency setting.
+- Pass (agreed 2026-10-29, TEST.md T4): grid N = 1, 2, 3 × K = 1, 2, 4, 6; a combination passes if max latency ≤ 5 s and swap grows ≤ 100 MB during the run.
+- Tie-breaker if several combinations pass (agreed 2026-10-29): (1) highest segments processed per minute, (2) highest N, (3) lowest max latency.
 - Why: Zaven asked to know how many segments the laptop can process in parallel before hitting RAM limits or degrading latency.
 
 **D3 — Skeleton ASR: `faster-whisper` "small", int8, CPU, language fixed to `hy`.**

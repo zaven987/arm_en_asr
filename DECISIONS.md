@@ -23,7 +23,7 @@
 11. **Risk mitigations:** any new mitigation must be agreed with Zaven before it is written here.
 12. **Time:** Zaven monitors the 20-hour budget and is the one who decides whether a milestone is overrunning and must be cut. Cut order: M9 first, then M8.
 13. **Chats folder:** Zaven exports all chat transcripts as `.md` into `chats/`.
-14. **Command outputs are not committed:** files in `command_outputs/` stay local on Zaven's laptop and are never committed to git. (added 2026-10-29)
+14. **Command outputs are not committed:** files in `command_outputs/` stay local on Zaven's laptop and are never committed to git; enforced by `.gitignore`. (added 2026-10-29)
 
 ---
 
@@ -47,9 +47,9 @@
 ## 3. Current status
 
 - **Current milestone:** M1 — Environment (in progress).
-- **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`).
+- **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** Claude proposes `requirements-convert.txt` and `download_models.py` (D15, D23, D24) (see `handovers/003-m1-env-to-download-models.md`).
+- **Next step:** smoke-run each model on one Armenian clip, RAM check, Armenian-script terminal check (R15).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -211,6 +211,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 
 **D15 — Models downloaded once by `download_models.py`.**
 - The app sets `HF_HUB_OFFLINE=1` and exits with a clear error if a model is missing. No runtime downloads.
+- Addition (agreed 2026-10-29): models live in `models/` at the repo root (gitignored). Revisions are pinned: faster-whisper-small `536b066…`, opus-mt-hy-en `79b0a50…`. `download_models.py` calls the converter in `.venv-convert`.
 
 **D16 — Repo layout.**
 ```
@@ -222,8 +223,9 @@ tests/fixtures/           # small committed fixtures (D22)
 eval/meta/*.csv           # committed
 eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
+models/                   # gitignored (D15)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
-requirements.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
+requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
 ```
 
 **D17 — Evaluation clips: each clip has one device role.**
@@ -259,10 +261,13 @@ requirements.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
 **D23 — Model conversion happens in a separate, one-time environment.** (agreed 2026-10-29)
 - What: opus-mt-hy-en is converted to CTranslate2 int8 in `.venv-convert` from a pinned `requirements-convert.txt` (CPU-only torch + transformers).
 - Why: torch never enters the app environment.
+- Addition (agreed 2026-10-29): direct dependencies go in `requirements-convert.in`; `requirements-convert.txt` is generated with `uv pip compile --torch-backend cpu`. Pins: ctranslate2 4.8.4, transformers 4.57.6 (last v4; chosen over v5 because the Marian converter is long proven on v4), torch 2.14.x CPU, sentencepiece 0.2.2.
 - Alternatives: torch in the main environment (rejected: about 1 GB more, and a risk of pulling the CUDA build); someone else's pre-converted model (rejected: we can't verify where it came from).
 
 **D24 — Silero VAD file comes from the official snakers4/silero-vad GitHub repo at a pinned release tag.** (agreed 2026-10-29)
 - What: `download_models.py` fetches `silero_vad.onnx`; the app runs it with onnxruntime.
+- Addition (agreed 2026-10-29): tag v6.2.1 (6.2.2 / 6.2.3 judged minor).
+- Addition (agreed 2026-10-29): SHA-256 of `silero_vad.onnx` v6.2.1 (2 327 524 bytes): `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`.
 - Alternatives: the `silero-vad` pip package (rejected: requires torch); the copy bundled in faster-whisper (rejected: ties VAD to the ASR library).
 
 ---

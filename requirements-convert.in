@@ -1,0 +1,8 @@
+# requirements-convert.in: direct deps of the one-time conversion env (D23). Edited by hand.
+# requirements-convert.txt is generated from this by `uv pip compile --torch-backend cpu`. Never edit it by hand.
+# Target: Python 3.10 (D14). Used only in .venv-convert, never in .venv.
+
+ctranslate2==4.8.4     # same as the app env, so the converted model matches the runtime (D5)
+transformers==4.57.6   # last v4 release; loads the Marian checkpoint for the converter
+torch>=2.14,<2.15      # CPU-only build via --torch-backend cpu; 2.14 = last with Python 3.10 wheels
+sentencepiece==0.2.2   # Marian tokenizer files, same as the app env

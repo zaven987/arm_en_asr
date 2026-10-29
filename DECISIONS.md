@@ -23,6 +23,7 @@
 11. **Risk mitigations:** any new mitigation must be agreed with Zaven before it is written here.
 12. **Time:** Zaven monitors the 20-hour budget and is the one who decides whether a milestone is overrunning and must be cut. Cut order: M9 first, then M8.
 13. **Chats folder:** Zaven exports all chat transcripts as `.md` into `chats/`.
+14. **Command outputs are not committed:** files in `command_outputs/` stay local on Zaven's laptop and are never committed to git. (added 2026-10-29)
 
 ---
 
@@ -45,9 +46,10 @@
 
 ## 3. Current status
 
-- **Current milestone:** M1 — Environment (not started).
+- **Current milestone:** M1 — Environment (in progress).
+- **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M1 — Claude proposes a pinned `requirements.txt` for Zaven's approval (see `handovers/002-testmd-to-m1.md`).
+- **Next step:** Claude proposes `requirements-convert.txt` and `download_models.py` (D15, D23, D24) (see `handovers/003-m1-env-to-download-models.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -204,6 +206,8 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 
 **D14 — Environment: uv + Python 3.10.12.**
 - `uv venv --python 3.10` creates `.venv`; install with `uv pip install -r requirements.txt`; all versions pinned in `requirements.txt`.
+- Addition (agreed 2026-10-29): stay on Python 3.10.12 even though it reaches end-of-life in Oct 2026. The pins that depend on 3.10 are onnxruntime 1.23.2 and numpy 2.2.6, the last versions with 3.10 support. Direct dependencies live in `requirements.in`; `requirements.txt` is generated from it by `uv pip compile` and never edited by hand.
+- Alternative: a uv-managed Python 3.12 (rejected for now; revisit at M7 if a bake-off candidate needs 3.11+).
 
 **D15 — Models downloaded once by `download_models.py`.**
 - The app sets `HF_HUB_OFFLINE=1` and exits with a clear error if a model is missing. No runtime downloads.
@@ -219,6 +223,7 @@ eval/meta/*.csv           # committed
 eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
+requirements.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
 ```
 
 **D17 — Evaluation clips: each clip has one device role.**
@@ -250,6 +255,15 @@ DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 - What: small fixture files are committed in `tests/fixtures/`: a few seconds of FLEURS hy_am audio (CC-BY 4.0, attribution in `tests/fixtures/README.md`), generated silence, and ≥ 12 s continuous speech. A missing model or fixture makes a test **fail**, never skip. pytest markers: `hardware` (real devices + person present) and `slow` (load test), excluded from a plain `pytest` run.
 - Why: tests run from a fresh clone; skipping would be a silent fallback (working rule 2).
 - Alternatives: gitignored fixtures like `eval/clips/` (rejected: tests could not run from a fresh clone).
+
+**D23 — Model conversion happens in a separate, one-time environment.** (agreed 2026-10-29)
+- What: opus-mt-hy-en is converted to CTranslate2 int8 in `.venv-convert` from a pinned `requirements-convert.txt` (CPU-only torch + transformers).
+- Why: torch never enters the app environment.
+- Alternatives: torch in the main environment (rejected: about 1 GB more, and a risk of pulling the CUDA build); someone else's pre-converted model (rejected: we can't verify where it came from).
+
+**D24 — Silero VAD file comes from the official snakers4/silero-vad GitHub repo at a pinned release tag.** (agreed 2026-10-29)
+- What: `download_models.py` fetches `silero_vad.onnx`; the app runs it with onnxruntime.
+- Alternatives: the `silero-vad` pip package (rejected: requires torch); the copy bundled in faster-whisper (rejected: ties VAD to the ASR library).
 
 ---
 

@@ -1,0 +1,12 @@
+# requirements.in: packages we use directly (edited by hand).
+# requirements.txt is generated from this by `uv pip compile`. Never edit it by hand.
+# Target: Python 3.10 (D14).
+
+faster-whisper==1.2.1   # ASR skeleton model (D3). Latest release
+ctranslate2==4.8.4      # runs opus-mt-hy-en int8 (D5); faster-whisper also uses it
+sentencepiece==0.2.2    # tokenizer for the opus-mt model at runtime (D5), so no transformers needed at runtime
+onnxruntime==1.23.2     # Silero VAD ONNX (D8). Last version with Python 3.10 wheels
+numpy==2.2.6            # audio arrays. Last version for Python 3.10
+huggingface-hub         # downloads in download_models.py (D15). compile picks the exact version
+psutil==7.2.2           # RSS/swap measurement for the M1 RAM check and T4
+pytest==9.0.3           # tests (TEST.md)

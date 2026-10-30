@@ -46,11 +46,12 @@
 
 ## 3. Current status
 
-- **Current milestone:** M2 — Eval data v0 (next).
+- **Current milestone:** M2 — Eval data v0 (in progress).
+- **Done in M2 so far (2026-10-30):** FLEURS subset built: 100 clips, 19.5 min, 4.7–30.9 s, 36 longer than 12 s (D19; `eval/meta/fleurs_hy_am_test100.csv`; `command_outputs/m2_fleurs_subset.txt`). Clip plan agreed (D17). Reference drafting with MMS-1B-all agreed (D18); `scripts/download_mms.py` (revision `3d33597…`, from `command_outputs/m2_mms_info.txt`) and `scripts/draft_mms.py` written, not yet run. NVIDIA Armenian FastConformer added to the M7 bake-off (D4).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M2 — eval data v0 (see `handovers/004-m1-done-to-m2.md`).
+- **Next step:** M2 — Zaven runs `scripts/download_mms.py`, converts his 5 clips, runs `scripts/draft_mms.py` on them and corrects the drafts (D15, D17, D18).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -162,6 +163,9 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
   - Meta Omnilingual ASR CTC 300M — 1.3 GB fp32 (less in fp16 on GPU); strong average multilingual CER; no punctuation; needs fairseq2; Armenian score unknown.
   - **BuzzASR/armenian, quantized** (Whisper large-v3 fine-tune, best Armenian accuracy found: FLEURS WER ≈ 11.9 %, CER ≈ 3.7 %). Added on Zaven's question. Full fp16 (~3 GB) does not fit; int8 (~1.6–1.8 GB) or whisper.cpp q5 (~1.1 GB) might fit RAM, but the full 32-layer decoder likely breaks 5 s on the 15 W CPU, and int8 conversion itself needs loading ~3 GB fp16 weights.
   - BuzzASR quantized is a conditional candidate with a **30-minute time-box** (agreed 2026-10-28); if it does not load and run within that, we record it as "rejected: hardware" and move on.
+  - **NVIDIA `stt_hy_fastconformer_hybrid_large_pc`** (added 2026-10-30, on Zaven's question). FastConformer hybrid Transducer + CTC, ~115M parameters, Armenian only, outputs punctuation and capitals, CC-BY-4.0. Model card: FLEURS test WER 12.3 % (Transducer) / 13.2 % (CTC). Trained on Common Voice 17 (48 h), FLEURS (12 h), Grqaser audiobooks (22 h) and two proprietary sets (~214 h). Not Whisper in architecture or data, small enough to be fast on CPU.
+    - Conversion: we export it to ONNX ourselves in `.venv-convert` and run it with onnxruntime (D23 pattern). The third-party ONNX export (OpenVoiceOS) is rejected for the same reason as in D23 (we can't verify where it came from). Exact export steps are agreed in M7.
+    - Caveat: it was trained on Grqaser audiobooks, so eval clips taken from Grqaser could inflate its score.
 - Why: Armenian is low-resource; ASR quality is our biggest risk, so we choose the final model by measurement.
 
 **D5 — Skeleton MT: `Helsinki-NLP/opus-mt-hy-en` (Marian), via CTranslate2 int8.**
@@ -214,6 +218,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - The app sets `HF_HUB_OFFLINE=1` and exits with a clear error if a model is missing. No runtime downloads.
 - Addition (agreed 2026-10-29): models live in `models/` at the repo root (gitignored). Revisions are pinned: faster-whisper-small `536b066…`, opus-mt-hy-en `79b0a50…`. `download_models.py` calls the converter in `.venv-convert`.
 - Addition (agreed 2026-10-30): `download_models.py` moved from the repo root to `scripts/` (run as `python scripts/download_models.py`), so all helper scripts live together.
+- Addition (agreed 2026-10-30): `download_models.py` stays for **app models only**. A model used only by a helper script gets its own one-time download helper. First case: MMS-1B-all for reference drafting (D18), fetched by `scripts/download_mms.py` into `models/mms-1b-all/` (gitignored) at a pinned revision, base files + Armenian adapter (`adapter.hye.*`) only, not the full repo.
 
 **D16 — Repo layout.**
 ```
@@ -226,8 +231,10 @@ eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
 models/                   # gitignored (D15)
 scripts/                  # helper scripts, committed (added 2026-10-29):
-                          #   download_models.py (D15; moved here 2026-10-30), fetch_fleurs.py (D19), smoke_m1.py (M1)
+                          #   download_models.py (D15; moved here 2026-10-30), fetch_fleurs.py (D19), smoke_m1.py (M1),
+                          #   download_mms.py + draft_mms.py (D15, D18; added 2026-10-30)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
+eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
 ```
@@ -237,15 +244,23 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Tests needing both devices pair a mic clip with a system clip via `--mic-wav` + `--system-wav`.
 - Extra use (testing only): mic clips are also fed through the diarizer to check it keeps the **same speaker number for one speaker through a whole solo clip**.
 - Source: existing public/scripted audio (no one recorded). 5–10 clips, 1–3 min each, at least 2 speakers overall.
+- Addition (agreed 2026-10-30): 5 clips. **3 mic clips**, 1 min each, from audiobooks (single reader). **2 system clips**, 1.5 min each, from podcasts chosen by Zaven: one with **2 speakers** (used for T1.6, the 1–2 remote speaker case of D9/M6) and one with **3 speakers**. Files: `eval/clips/mic_01…03.wav`, `sys_01…02.wav`, converted with ffmpeg to 16 kHz mono 16-bit PCM.
 
 **D18 — Clip metadata: one CSV per clip, audio 16 kHz mono WAV.**
 - Columns: `start,end,device,speaker,armenian,english`. Times in seconds from clip start (e.g. `12.40`).
 - Zaven writes Armenian text, times, speakers → Claude adds English and formats → Zaven reviews.
 - Audio gitignored; only metadata committed.
 - Addition (agreed 2026-10-29): eval clips are stored as 16 kHz mono 16-bit PCM WAV. FLEURS ships 32-bit float WAV, so `scripts/fetch_fleurs.py` keeps the original and writes a `.pcm16.wav` copy next to it.
+- Addition (agreed 2026-10-30): the FLEURS subset is described by one file, `eval/meta/fleurs_hy_am_test100.csv`: the D18 columns plus `fleurs_id` and `wav`; `start=0.00`, `end` = clip length, `device=mic`, `speaker=Me`. Generated by `scripts/fetch_fleurs.py`, never edited by hand. Attribution (CC-BY 4.0) in `eval/meta/README.md`.
+- Addition (agreed 2026-10-30): reference text for Zaven's clips is drafted by **Meta MMS-1B-all** (`hye` adapter, run once in `.venv-convert`) and then corrected by hand by Zaven. The draft model is non-Whisper, so references don't lean towards a bake-off candidate. MMS is not a bake-off candidate itself, because it was trained on FLEURS.
+  - `scripts/draft_mms.py eval/clips/<name>.wav` checks the file is 16 kHz mono 16-bit (fails loudly otherwise), cuts it into ~15 s windows at the quietest point between 12 and 18 s (one long pass would need several GB of RAM), and writes `eval/clips/<name>.draft.csv` (gitignored) in the D18 columns: `armenian` = draft, `speaker` and `english` blank. The draft has no capitals and no punctuation.
+  - Zaven corrects the text, adds punctuation, splits it into speaker turns with times and saves `eval/meta/<name>.csv`; then Claude adds English and Zaven reviews (as above).
+  - Runs in fp32 (~4 GB RAM); Zaven closes browser tabs while it runs.
 
 **D19 — Public data: FLEURS hy_am only** (~100 test sentences; FLEURS has parallel English text → free MT references).
 - Common Voice dropped to save time (needs manual login download).
+- Addition (agreed 2026-10-30): FLEURS hy_am test has 350 sentences in 932 recordings, all with an en_us match. Subset = the **first 100 hy_am test sentence ids in TSV order** that have an en_us match, one recording per id (the first row for that id). Result: 19.5 min, 4.7–30.9 s per clip, 36 clips longer than 12 s. Whether clips are fed to ASR whole or through VAD (D8 cap) is decided in M7.
+  - Rejected: all 350 (~69 min, about 40 min of ASR per candidate in M7); only clips ≤ 12 s (biases towards short sentences).
 
 **D20 — Metrics (v0, baseline only, no quality thresholds yet).**
 - ASR: WER and CER. MT: chrF / BLEU + Zaven's manual 1–5 rating. Latency: median / p95 / max. Diarization: % of segments with correct label.

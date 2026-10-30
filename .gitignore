@@ -2,3 +2,5 @@
 .venv-convert/
 command_outputs/
 models/
+eval/fleurs/
+eval/clips/

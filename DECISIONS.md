@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-10-29
+- Created: 2026-10-26 · Last updated: 2026-10-30
 
 ---
 
@@ -46,10 +46,11 @@
 
 ## 3. Current status
 
-- **Current milestone:** M1 — Environment (in progress).
+- **Current milestone:** M2 — Eval data v0 (next).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
+- **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** smoke-run each model on one Armenian clip, RAM check, Armenian-script terminal check (R15).
+- **Next step:** M2 — eval data v0 (see `handovers/004-m1-done-to-m2.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -224,6 +225,8 @@ eval/meta/*.csv           # committed
 eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
 models/                   # gitignored (D15)
+scripts/                  # one-off helper scripts, committed (added 2026-10-29)
+eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
 ```
@@ -238,6 +241,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Columns: `start,end,device,speaker,armenian,english`. Times in seconds from clip start (e.g. `12.40`).
 - Zaven writes Armenian text, times, speakers → Claude adds English and formats → Zaven reviews.
 - Audio gitignored; only metadata committed.
+- Addition (agreed 2026-10-29): eval clips are stored as 16 kHz mono 16-bit PCM WAV. FLEURS ships 32-bit float WAV, so `scripts/fetch_fleurs.py` keeps the original and writes a `.pcm16.wav` copy next to it.
 
 **D19 — Public data: FLEURS hy_am only** (~100 test sentences; FLEURS has parallel English text → free MT references).
 - Common Voice dropped to save time (needs manual login download).
@@ -277,7 +281,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 | # | Milestone | Hours | Status |
 |---|---|---|---|
 | M0 | Planning: questions, DECISIONS.md, TEST.md | 1.5 | ☑ done (2026-10-29) |
-| M1 | Environment (uv), `download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☐ not done |
+| M1 | Environment (uv), `download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☑ done (2026-10-30) |
 | M2 | Eval data v0: Zaven's 5–10 clips + CSVs; FLEURS subset | 2 | ☐ not done |
 | M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☐ not done |
 | M4 | Initial tests: unit, end-to-end latency, capture smoke, load test (D2) | 2 | ☐ not done |
@@ -297,7 +301,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2) | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4) | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |
@@ -311,7 +315,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 | R12 | VAD cuts mid-word or waits too long | Tuned parameters (D8); revisit in M8 | accepted |
 | R13 | Eval set too small to tell real improvements from noise | Add FLEURS subset (D19); treat small differences carefully | accepted |
 | R14 | Model download size / disk | 309 GB free; models downloaded once (D15) | accepted |
-| R15 | Armenian script renders badly in terminal | Locale is en_US.UTF-8; check in M1 | accepted |
+| R15 | Armenian script renders badly in terminal | Checked in M1: text is correct UTF-8; overlap came from Ubuntu Mono lacking Armenian letters. Fix: terminal font DejaVu Sans Mono (setup note in README, M10) | accepted |
 | R16 | Scope creep | Working rule 1; Future ideas section | accepted |
 | R17 | RAM: only ~2.4 GB free, swap already used → swapping breaks 5 s | Load test (D2); RAM check in M1; close unneeded apps before demo; light MT first (D5) | accepted |
 | R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h | accepted |

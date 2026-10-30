@@ -47,7 +47,7 @@
 ## 3. Current status
 
 - **Current milestone:** M2 — Eval data v0 (next).
-- **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
+- **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
 - **Next step:** M2 — eval data v0 (see `handovers/004-m1-done-to-m2.md`).
@@ -210,14 +210,14 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - Addition (agreed 2026-10-29): stay on Python 3.10.12 even though it reaches end-of-life in Oct 2026. The pins that depend on 3.10 are onnxruntime 1.23.2 and numpy 2.2.6, the last versions with 3.10 support. Direct dependencies live in `requirements.in`; `requirements.txt` is generated from it by `uv pip compile` and never edited by hand.
 - Alternative: a uv-managed Python 3.12 (rejected for now; revisit at M7 if a bake-off candidate needs 3.11+).
 
-**D15 — Models downloaded once by `download_models.py`.**
+**D15 — Models downloaded once by `scripts/download_models.py`.**
 - The app sets `HF_HUB_OFFLINE=1` and exits with a clear error if a model is missing. No runtime downloads.
 - Addition (agreed 2026-10-29): models live in `models/` at the repo root (gitignored). Revisions are pinned: faster-whisper-small `536b066…`, opus-mt-hy-en `79b0a50…`. `download_models.py` calls the converter in `.venv-convert`.
+- Addition (agreed 2026-10-30): `download_models.py` moved from the repo root to `scripts/` (run as `python scripts/download_models.py`), so all helper scripts live together.
 
 **D16 — Repo layout.**
 ```
 app.py
-download_models.py
 src/arm_en_asr/{audio_capture,asr,translate,diarizer,pipeline,output}.py
 tests/
 tests/fixtures/           # small committed fixtures (D22)
@@ -225,7 +225,8 @@ eval/meta/*.csv           # committed
 eval/clips/*.wav          # gitignored
 chats/  handovers/  command_outputs/
 models/                   # gitignored (D15)
-scripts/                  # one-off helper scripts, committed (added 2026-10-29)
+scripts/                  # helper scripts, committed (added 2026-10-29):
+                          #   download_models.py (D15; moved here 2026-10-30), fetch_fleurs.py (D19), smoke_m1.py (M1)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
@@ -269,7 +270,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Alternatives: torch in the main environment (rejected: about 1 GB more, and a risk of pulling the CUDA build); someone else's pre-converted model (rejected: we can't verify where it came from).
 
 **D24 — Silero VAD file comes from the official snakers4/silero-vad GitHub repo at a pinned release tag.** (agreed 2026-10-29)
-- What: `download_models.py` fetches `silero_vad.onnx`; the app runs it with onnxruntime.
+- What: `scripts/download_models.py` fetches `silero_vad.onnx`; the app runs it with onnxruntime.
 - Addition (agreed 2026-10-29): tag v6.2.1 (6.2.2 / 6.2.3 judged minor).
 - Addition (agreed 2026-10-29): SHA-256 of `silero_vad.onnx` v6.2.1 (2 327 524 bytes): `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`.
 - Alternatives: the `silero-vad` pip package (rejected: requires torch); the copy bundled in faster-whisper (rejected: ties VAD to the ASR library).
@@ -281,7 +282,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 | # | Milestone | Hours | Status |
 |---|---|---|---|
 | M0 | Planning: questions, DECISIONS.md, TEST.md | 1.5 | ☑ done (2026-10-29) |
-| M1 | Environment (uv), `download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☑ done (2026-10-30) |
+| M1 | Environment (uv), `scripts/download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☑ done (2026-10-30) |
 | M2 | Eval data v0: Zaven's 5–10 clips + CSVs; FLEURS subset | 2 | ☐ not done |
 | M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☐ not done |
 | M4 | Initial tests: unit, end-to-end latency, capture smoke, load test (D2) | 2 | ☐ not done |

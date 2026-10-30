@@ -1,7 +1,7 @@
 """One-time model download and conversion (D15, D23, D24).
 
 Run once from the repo root, with .venv active and internet on:
-    python download_models.py
+    python scripts/download_models.py
 
 Everything goes into models/ (gitignored). The app never downloads at runtime.
 Already-present models are skipped. Any failure stops with "ERROR:" and exit code 1.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # repo root (script lives in scripts/)
 MODELS = ROOT / "models"
 
 # faster-whisper small, CTranslate2 format (D3)

@@ -75,7 +75,7 @@ def load_clip() -> tuple[dict, np.ndarray]:
 
 def run_vad(audio: np.ndarray) -> None:
     if not SILERO_PATH.exists():
-        fail(f"model missing: {SILERO_PATH} (run download_models.py)")
+        fail(f"model missing: {SILERO_PATH} (run scripts/download_models.py)")
     t0 = time.perf_counter()
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = 1
@@ -105,7 +105,7 @@ def run_vad(audio: np.ndarray) -> None:
 
 def run_asr(audio: np.ndarray) -> str:
     if not (WHISPER_DIR / "model.bin").exists():
-        fail(f"model missing: {WHISPER_DIR} (run download_models.py)")
+        fail(f"model missing: {WHISPER_DIR} (run scripts/download_models.py)")
     t0 = time.perf_counter()
     model = WhisperModel(str(WHISPER_DIR), device="cpu", compute_type="int8")
     print(f"[asr] faster-whisper small int8 CPU loaded in {time.perf_counter() - t0:.2f} s")
@@ -126,7 +126,7 @@ def run_asr(audio: np.ndarray) -> str:
 def run_mt(sentences: dict[str, str], english_ref: str) -> None:
     for f in ("model.bin", "source.spm", "target.spm"):
         if not (OPUS_DIR / f).exists():
-            fail(f"model file missing: {OPUS_DIR / f} (run download_models.py)")
+            fail(f"model file missing: {OPUS_DIR / f} (run scripts/download_models.py)")
     t0 = time.perf_counter()
     translator = ctranslate2.Translator(str(OPUS_DIR), device="cpu", compute_type="int8")
     sp_src = spm.SentencePieceProcessor(model_file=str(OPUS_DIR / "source.spm"))

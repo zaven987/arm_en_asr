@@ -8,7 +8,7 @@ Start milestone **M2 — Eval data v0** (2 h budget): Zaven's 5–10 clips + CSV
 ## Current state
 - **M1 is done** (DECISIONS.md section 3 has the numbers).
 - `.venv` (app) and `.venv-convert` (one-time conversion; torch 2.14.1+cpu, transformers 4.57.6) are both built from pinned files.
-- `download_models.py` has been run. `models/` holds:
+- `scripts/download_models.py` has been run (moved from the repo root to `scripts/` on 2026-10-30). `models/` holds:
   - faster-whisper-small
   - opus-mt-hy-en (source checkpoint, kept)
   - opus-mt-hy-en-ct2-int8
@@ -22,8 +22,8 @@ Start milestone **M2 — Eval data v0** (2 h budget): Zaven's 5–10 clips + CSV
 - Git: the M1 smoke/fetch commit was proposed in this chat. **Zaven: confirm in the new chat whether it has been made.**
 
 ## Decisions made in this chat (already in DECISIONS.md)
-- **D15:** models live in `models/`; revisions are pinned; `download_models.py` calls the converter in `.venv-convert`.
-- **D16:** layout adds `models/`, `scripts/` (committed), `eval/fleurs/` (gitignored) and `requirements-convert.in`.
+- **D15:** models live in `models/`; revisions are pinned; `scripts/download_models.py` calls the converter in `.venv-convert`.
+- **D16:** layout adds `models/`, `scripts/` (committed; holds `download_models.py`, `fetch_fleurs.py`, `smoke_m1.py`), `eval/fleurs/` (gitignored) and `requirements-convert.in`.
 - **D18:** eval clips are 16 kHz mono **16-bit PCM** WAV. FLEURS float WAVs get a `.pcm16.wav` copy.
 - **D23:** `requirements-convert.in` is the source file; transformers v4 (4.57.6) chosen over v5.
 - **D24:** silero tag v6.2.1 and its SHA-256.

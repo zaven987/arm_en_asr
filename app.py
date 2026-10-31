@@ -3,8 +3,9 @@
 
 Usage (D11):
     python app.py --list-devices
-    python app.py --mic "<exact source name>" [--system "<exact monitor name>"]
-    python app.py --mic-wav a.wav [--system-wav b.wav]      # file mode, tests only
+    python app.py [--mic "<exact source name>"] [--system "<exact monitor name>"]
+    python app.py [--mic-wav a.wav] [--system-wav b.wav]    # file mode, tests only
+    (at least one input; either may be left out)
 
 M3 step S1: command line, device-name check and model check only.
 The pipeline is connected in step S8.
@@ -122,11 +123,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     if live and file_mode:
         p.error("use either --mic/--system (live) or --mic-wav/--system-wav (file mode), not both")
     if not args.list_devices and not live and not file_mode:
-        p.error("give --mic (live), --mic-wav (file mode) or --list-devices")
-    if args.system is not None and args.mic is None:
-        p.error("--system needs --mic")
-    if args.system_wav is not None and args.mic_wav is None:
-        p.error("--system-wav needs --mic-wav")
+        p.error("give --mic and/or --system (live), --mic-wav and/or --system-wav (file mode), "
+                "or --list-devices")
     return args
 
 
@@ -136,13 +134,16 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     # 1. Inputs: device names (live) or files (file mode).
-    if args.mic is not None:
+    # Either input may be left out (agreed 2026-10-31).
+    if args.mic is not None or args.system is not None:
         available = source_names(pactl_sources_raw())
-        check_device("--mic", args.mic, available)
+        if args.mic is not None:
+            check_device("--mic", args.mic, available)
         if args.system is not None:
             check_device("--system", args.system, available)
     else:
-        check_wav_exists("--mic-wav", args.mic_wav)
+        if args.mic_wav is not None:
+            check_wav_exists("--mic-wav", args.mic_wav)
         if args.system_wav is not None:
             check_wav_exists("--system-wav", args.system_wav)
 

@@ -183,6 +183,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 **D8 — VAD: Silero VAD (ONNX, MIT).**
 - Settings: end of phrase = 0.6 s silence; ignore speech < 0.3 s; **hard cap 12 s per segment**.
 - Known trade-off: the 12 s cap may cut mid-word / mid-sentence. Revisit in the quality pass (M8) if time allows.
+- Addition (agreed 2026-10-31, M3 S3): Silero runs on 512-sample windows; a window is speech if p > 0.5 (the two-threshold variant 0.5 / 0.35 waits for M8 if the VAD turns out choppy). At the 12 s cap the segment closes at exactly 12 s and the next one starts with the remaining audio (nothing lost). 0.2 s of audio is kept before the first and after the last speech window, counted inside the cap. At end of stream (end of file or `quit`) an open segment is closed and emitted.
 
 **D9 — Diarizer: chosen at its milestone (M6).**
 - Plan: small speaker-embedding model (WeSpeaker/ECAPA via sherpa-onnx or SpeechBrain, ~25–80 MB) + online clustering (assign to nearest known speaker by cosine similarity, or create a new speaker under a threshold).
@@ -193,6 +194,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 - `--list-devices` prints `pactl list short sources` (includes `.monitor` sources).
 - Why: PulseAudio resamples for us; exact PulseAudio names work directly. `parec` is already installed (pulseaudio-utils).
 - Alternatives: `sounddevice`/PortAudio (rejected: does not expose monitor sources by exact name); `soundcard` library (backup).
+- Addition (agreed 2026-10-31): command `parec --device=<name> --format=s16le --rate=16000 --channels=1 --raw`; parec ending mid-session = device lost → loud error.
 
 **D11 — CLI.**
 ```
@@ -211,6 +213,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 **D12 — Output line shows speaker, start offset (HH:MM:SS), Armenian, English, and measured latency** (format in section 8).
 - Latency = time the line is printed − time the speech segment ended.
 - Lines whose latency > 5 s get a visible warning.
+- Addition (agreed 2026-10-31): `Segment` = `{id, device, start, end, audio, end_wall}`. `start` / `end` = first / last speech sample in seconds from session start, counted by samples. `end_wall` = `time.monotonic()` arrival of the chunk holding the last speech sample; latency is measured from it, so the 0.6 s end silence counts inside the 5 s.
 
 **D13 — Print order: by when speech ended.** (see Known limitation L5)
 
@@ -282,6 +285,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - What: `--mic-wav` / `--system-wav` stream the file at the speed it was recorded, not as fast as possible.
 - Why: otherwise the whole file arrives instantly and the measured latency (D12) means nothing compared with live use.
 - Alternatives: feed as fast as possible (rejected: latency not comparable to live).
+- Addition (agreed 2026-10-31): the WAV source takes an explicit `realtime` flag. The app always uses `True`; the T1.1 unit tests use `False` (they test segmentation only; latency is T2). WAV input must be 16 kHz mono 16-bit PCM or it fails loudly.
 
 **D22 — Test fixtures and test policy.** (agreed 2026-10-29)
 - What: small fixture files are committed in `tests/fixtures/`: a few seconds of FLEURS hy_am audio (CC-BY 4.0, attribution in `tests/fixtures/README.md`), generated silence, and ≥ 12 s continuous speech. A missing model or fixture makes a test **fail**, never skip. pytest markers: `hardware` (real devices + person present) and `slow` (load test), excluded from a plain `pytest` run.

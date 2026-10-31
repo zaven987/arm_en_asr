@@ -2,7 +2,7 @@
 
 > **How to use this file.** Every test entry, every pass criterion and every status change is agreed with Zaven **before** it is written here (working rule 10). Zaven runs all tests on his laptop; when Claude needs the output, Zaven saves it to `command_outputs/<name>.txt` and sends the path (rules 8–9). Decisions referenced as D# are in `DECISIONS.md`.
 
-- Created: 2026-10-29 · Last updated: 2026-10-29
+- Created: 2026-10-29 · Last updated: 2026-11-01
 
 ---
 
@@ -33,7 +33,7 @@
 
 | ID | Name | Milestone | Status |
 |---|---|---|---|
-| T1.1 | Unit: `audio_capture` + VAD (file input) | M3 | not run |
+| T1.1 | Unit: `audio_capture` + VAD (file input) | M3 | passed |
 | T1.2 | Unit: `asr` | M3 | not run |
 | T1.3 | Unit: `translate` | M3 | not run |
 | T1.4 | Unit: `output` line format | M3 | not run |
@@ -60,7 +60,7 @@
   - Speech fixture → at least 1 segment, each 0.3–12 s long, 16 kHz mono.
   - Silence fixture → 0 segments.
   - Continuous-speech fixture → cut at 12 s.
-- **Status:** not run
+- **Status:** passed (2026-10-31, see results log)
 
 #### T1.2 — `asr`
 - **Purpose:** ASR runs and returns Armenian text. This is a sanity check, not a quality bar.
@@ -176,3 +176,4 @@ Rows are only ever appended, never edited. One row per run.
 | Date | Test ID | Commit | Conditions | Key numbers | Status | Notes |
 |---|---|---|---|---|---|---|
 | — | — | — | — | — | — | — |
+| 2026-10-31 | T1.1 | 83c9def | file input fed with `realtime=False` (V6); plain `python -m pytest -v` run | 3/3 T1.1 tests passed (speech, silence, 12 s cut); whole default suite 6 passed in 0.34 s | passed | `command_outputs/m3_s3_pytest.txt` |

@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-10-31
+- Created: 2026-10-26 · Last updated: 2026-11-01
 
 ---
 
@@ -48,6 +48,7 @@
 
 - **Current milestone:** M3 — Walking skeleton, mic only (in progress).
 - **M3 started (2026-10-31):** plan S1–S8 agreed (handover 005). S1 done: `app.py` CLI, device and model checks, `pytest.ini`, T6 part 1 (3 tests pass; `command_outputs/m3_s1_pytest.txt`). sacremoses closed: not used at runtime (opus-mt runs with ctranslate2 + sentencepiece).
+- **S2 done:** fixtures committed (ids 1817, 1699). **S3 done:** audio_capture + T1.1 (passed; `command_outputs/m3_s3_pytest.txt`).
 - **M2 done (2026-10-31):** reference CSVs written and reviewed: `eval/meta/mic_01`–`03.csv`, `eval/meta/sys_01.csv` (4 clips, D17; verbatim, D18); FLEURS subset `eval/meta/fleurs_hy_am_test100.csv` (D19).
 - **Done in M2 (2026-10-30/31):** FLEURS subset built: 100 clips, 19.5 min, 4.7–30.9 s, 36 longer than 12 s (D19; `command_outputs/m2_fleurs_subset.txt`). MMS-1B-all downloaded (revision `3d33597…`) and run by `scripts/draft_mms.py` to draft references (D15, D18; peak RAM 4.8 GB); Zaven corrected the drafts, Claude added English. NVIDIA Armenian FastConformer added to the M7 bake-off (D4).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
@@ -110,7 +111,7 @@ Corrections to PLAN.md:
 
 ## 8. Architecture
 
-Single process, threads + queues. Shared unit = **Segment** `{id, device (mic|system), start, end, audio}`; every stage attaches its result to the segment id.
+Single process, threads + queues. Shared unit = **Segment** `{id, device (mic|system), start, end, audio, end_wall}` (`end_wall` added 2026-11-01, see D12); every stage attaches its result to the segment id.
 
 ```
 [mic parec] ──► VAD ──┐

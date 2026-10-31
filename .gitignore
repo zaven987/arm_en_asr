@@ -4,3 +4,5 @@ command_outputs/
 models/
 eval/fleurs/
 eval/clips/
+__pycache__/
+.pytest_cache/

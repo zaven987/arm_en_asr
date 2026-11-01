@@ -104,7 +104,10 @@ class ParecSource:
         cmd = ["parec", f"--device={self.device_name}", "--format=s16le",
                "--rate=16000", "--channels=1", "--raw"]
         try:
-            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # start_new_session: Ctrl+C in the terminal reaches only the app, which then stops
+            # parec itself (Q6); otherwise parec would die first and look like "device lost".
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                          start_new_session=True)
         except FileNotFoundError:
             raise CaptureError("`parec` not found. Install pulseaudio-utils.") from None
         try:

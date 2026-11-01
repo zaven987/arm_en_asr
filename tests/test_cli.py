@@ -1,15 +1,18 @@
 """T6 - CLI fail-loudly checks (TEST.md).
 
 M3 step S1 covers: unknown device name, missing model.
-Step S8 adds: unknown stdin command, `quit` + Enter.
+Step S8 adds (Q8): unknown stdin command, `quit` + Enter. These start the app live on a real
+PulseAudio source; no person is needed (not marked `hardware`).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
+import threading
 import wave
 from pathlib import Path
 
@@ -88,3 +91,84 @@ def test_missing_model(tmp_path, monkeypatch, capsys):
     # No download attempted: the app forces offline mode and creates nothing.
     assert os.environ["HF_HUB_OFFLINE"] == "1"
     assert list(empty.iterdir()) == []
+
+
+# ---------------------------------------------------------------- S8: stdin commands (Q8)
+
+START_TIMEOUT = 60  # seconds: model loading + parec start
+STOP_TIMEOUT = 60   # seconds: drain + shutdown
+
+
+class LiveApp:
+    """The app running live on a real source, with stdin / stdout / stderr pipes."""
+
+    def __init__(self, source: str):
+        self.source = source
+        self.proc = subprocess.Popen(
+            [sys.executable, str(APP), "--mic", source],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=ROOT,
+        )
+        self.stderr_lines: list[str] = []
+        self._ready = threading.Event()
+        self._reader = threading.Thread(target=self._read_stderr, daemon=True)
+        self._reader.start()
+        started = self._ready.wait(START_TIMEOUT) and self.proc.poll() is None
+        if not started:
+            self.proc.kill()
+            pytest.fail(f"app did not reach 'listening on' within {START_TIMEOUT} s:\n{self.stderr}")
+
+    def _read_stderr(self) -> None:
+        for line in self.proc.stderr:
+            self.stderr_lines.append(line)
+            if line.startswith("listening on"):
+                self._ready.set()
+        self._ready.set()  # stderr closed: unblock the wait
+
+    @property
+    def stderr(self) -> str:
+        return "".join(self.stderr_lines)
+
+    def send_and_wait(self, text: str) -> int:
+        self.proc.stdin.write(text)
+        self.proc.stdin.flush()
+        try:
+            code = self.proc.wait(timeout=STOP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            pytest.fail(f"app did not stop within {STOP_TIMEOUT} s:\n{self.stderr}")
+        self._reader.join(5)
+        return code
+
+
+def parec_running(source: str) -> bool:
+    r = subprocess.run(["pgrep", "-f", f"parec --device={re.escape(source)}"],
+                       capture_output=True, text=True)
+    return r.returncode == 0
+
+
+def wait_for_parec(source: str, timeout: float = 5.0) -> bool:
+    """'listening on' is printed as the capture thread starts; parec may need a moment."""
+    stop = threading.Event()
+    for _ in range(int(timeout / 0.1)):
+        if parec_running(source):
+            return True
+        stop.wait(0.1)
+    return False
+
+
+def test_unknown_stdin_command_keeps_running():
+    app = LiveApp(real_source_name())
+    code = app.send_and_wait("hello\nquit\n")
+    assert "unknown command: 'hello'" in app.stderr
+    assert code == 0, f"exit {code}; stderr:\n{app.stderr}"  # still running until quit
+
+
+def test_quit_shuts_down_cleanly():
+    source = real_source_name()
+    app = LiveApp(source)
+    assert wait_for_parec(source), "parec did not start"
+    code = app.send_and_wait("quit\n")
+    assert code == 0, f"exit {code}; stderr:\n{app.stderr}"
+    assert app.stderr_lines[-1].strip() == "stopped"
+    assert not parec_running(source), "parec still running after quit"

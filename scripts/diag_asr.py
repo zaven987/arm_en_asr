@@ -20,6 +20,8 @@ G4  variants (one change each from the current setting beam 5, temperature 0, cp
 G5  CER: lowercase, Armenian letters and spaces only, spaces collapsed; edit distance / reference
     characters. Loops can push it above 100 %.
 A missing model, clip or reference CSV stops the script with a clear error (working rule 2).
+H2 (D26, 2026-11-01): --seg-cap 6,7,8 repeats the run with a shorter VAD segment cap (D8). It changes
+audio_capture.CAP for this script only; audio_capture.py itself is not changed.
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+import arm_en_asr.audio_capture as audio_capture  # noqa: E402
 from arm_en_asr.audio_capture import (  # noqa: E402
     SR, Segmenter, SileroVad, WavSource, new_id_counter, run_capture)
 
@@ -53,6 +56,13 @@ BASE_TRANSCRIBE = dict(language="hy", task="transcribe", vad_filter=False,
 LOOP_COMPRESSION = 2.4  # faster-whisper's own compression_ratio_threshold default
 CAP_MARGIN = 1.5        # G4 c
 MAX_NEW_TOKENS_LIMIT = 440  # Whisper max_length 448 minus the few prompt tokens
+# H1 (2026-11-01): faster-whisper passes max_length = prompt + max_new_tokens to CTranslate2
+# unchanged (fw_transcribe.py lines 1416-1452), but CTranslate2 then generates at most
+# floor(max_length / 2) new tokens. This rule fits every value measured in
+# latency_diag_asr*.txt (e.g. 285 + 4 -> 144, 107 + 4 -> 55, uncapped 448 -> 224). So to allow
+# `cap` new tokens we pass 2 x cap; the printed cap is the number of tokens actually allowed.
+CT2_LENGTH_FACTOR = 2
+EFFECTIVE_CAP_LIMIT = MAX_NEW_TOKENS_LIMIT // CT2_LENGTH_FACTOR  # 220
 
 # name -> (load overrides, transcribe overrides). "cap" is filled per segment (variant c).
 VARIANTS: dict[str, tuple[dict, dict]] = {
@@ -148,7 +158,8 @@ def token_rate(model) -> float:
         total_s += duration
     rate = total_tokens / total_s
     print(f"# token rate: all: {rate:.2f} tok/s; cap = ceil({rate:.2f} x segment s x {CAP_MARGIN})"
-          f", at most {MAX_NEW_TOKENS_LIMIT}", flush=True)
+          f" tokens allowed, at most {EFFECTIVE_CAP_LIMIT}; passed to faster-whisper as "
+          f"max_new_tokens = {CT2_LENGTH_FACTOR} x cap (H1)", flush=True)
     return rate
 
 
@@ -201,25 +212,9 @@ def parse_variants(spec: str) -> list[tuple[str, dict, dict]]:
     return out
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("clips", nargs="+", type=Path, help="16 kHz mono 16-bit WAVs in eval/clips/")
-    ap.add_argument("--variants", default=DEFAULT_VARIANTS,
-                    help=f"comma-separated; x+y combines (default {DEFAULT_VARIANTS})")
-    args = ap.parse_args()
-
-    variants = parse_variants(args.variants)
-    if not (WHISPER_DIR / "model.bin").is_file():
-        fail(f"model missing: faster-whisper small at {WHISPER_DIR} (run scripts/download_models.py)")
-    if not VAD_PATH.is_file():
-        fail(f"model missing: Silero VAD {VAD_PATH} (run scripts/download_models.py)")
-
-    import faster_whisper
-    print(f"# faster-whisper {faster_whisper.__version__}; base transcribe {BASE_TRANSCRIBE}")
-    print(f"# variants: {', '.join(v[0] for v in variants)}")
-
+def load_clips(paths: list[Path]) -> list:
     clips = []
-    for wav in args.clips:
+    for wav in paths:
         ref_text, _ = read_reference(wav.stem)
         segs = cut_segments(wav)
         if not segs:
@@ -227,57 +222,96 @@ def main() -> None:
         print(f"# {wav}: {len(segs)} segments: "
               + ", ".join(f"{s.id}:{s.start:.1f}-{s.end:.1f}s" for s in segs), flush=True)
         clips.append((wav, ref_text, segs))
+    return clips
+
+
+def run_one(model, rate, clips, seg_cap: float, name: str, load_kw: dict, trans_kw: dict) -> str:
+    """One variant on all clips at one segment cap; returns the summary line."""
+    print(f"\n=== segment cap {seg_cap:g} s, variant {name}: load {load_kw or '-'}, "
+          f"transcribe {trans_kw or '-'}")
+    print(f"{'clip':7} {'seg':>3} {'len_s':>6} {'asr_s':>6} {'tokens':>6} {'cap':>4} "
+          f"{'passes':>6} {'compr':>6} {'logprob':>7} {'loop':>4}  text (first 60 chars)")
+    times, loops, cers = [], 0, []
+    for wav, ref_text, segs in clips:
+        hyps = []
+        for s in segs:
+            seg_s = len(s.audio) / SR
+            kw = dict(BASE_TRANSCRIBE, **trans_kw)
+            cap = None
+            if kw.get("max_new_tokens") == "cap":
+                cap = min(math.ceil(rate * seg_s * CAP_MARGIN), EFFECTIVE_CAP_LIMIT)
+                kw["max_new_tokens"] = CT2_LENGTH_FACTOR * cap  # H1: CTranslate2 allows half
+            r = run_variant(model, s.audio, kw)
+            looped = r["compression"] > LOOP_COMPRESSION or (cap is not None and r["tokens"] >= cap)
+            loops += looped
+            times.append(r["time"])
+            hyps.append(r["text"])
+            print(f"{wav.stem:7} {s.id:>3} {seg_s:6.2f} {r['time']:6.2f} {r['tokens']:>6} "
+                  f"{cap if cap is not None else '-':>4} {r['passes']:>6} {r['compression']:6.2f} "
+                  f"{r['logprob']:7.2f} {'YES' if looped else 'no':>4}  {r['text'][:60]}",
+                  flush=True)
+        c = cer(" ".join(hyps), ref_text)
+        cers.append((wav.stem, c))
+        print(f"{wav.stem}: CER {100 * c:.1f} %", flush=True)
+    line = (f"cap {seg_cap:4g} s  variant {name:12} total ASR {sum(times):6.1f} s  "
+            f"max {max(times):5.1f} s  loops {loops}/{len(times)}  CER "
+            + ", ".join(f"{k} {100 * v:.1f} %" for k, v in cers))
+    print(line, flush=True)
+    return line
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("clips", nargs="+", type=Path, help="16 kHz mono 16-bit WAVs in eval/clips/")
+    ap.add_argument("--variants", default=DEFAULT_VARIANTS,
+                    help=f"comma-separated; x+y combines (default {DEFAULT_VARIANTS})")
+    ap.add_argument("--seg-cap", default=f"{audio_capture.CAP_S:g}",
+                    help="comma-separated VAD segment caps in seconds, 1-12 (default: the app's D8 cap)")
+    args = ap.parse_args()
+
+    variants = parse_variants(args.variants)
+    try:
+        seg_caps = [float(x) for x in args.seg_cap.split(",")]
+    except ValueError:
+        fail(f"--seg-cap must be numbers in seconds, got {args.seg_cap!r}")
+    for c in seg_caps:
+        if not 1.0 <= c <= audio_capture.CAP_S:
+            fail(f"--seg-cap {c:g} s is outside 1-{audio_capture.CAP_S:g} s")
+    if not (WHISPER_DIR / "model.bin").is_file():
+        fail(f"model missing: faster-whisper small at {WHISPER_DIR} (run scripts/download_models.py)")
+    if not VAD_PATH.is_file():
+        fail(f"model missing: Silero VAD {VAD_PATH} (run scripts/download_models.py)")
+
+    import faster_whisper
+    print(f"# faster-whisper {faster_whisper.__version__}; base transcribe {BASE_TRANSCRIBE}")
+    print(f"# variants: {', '.join(v[0] for v in variants)}; segment caps: "
+          + ", ".join(f"{c:g} s" for c in seg_caps), flush=True)
 
     model, model_threads = None, None
     rate = None
     summary = []
-    for name, load_kw, trans_kw in variants:
-        threads = load_kw.get("cpu_threads", BASE_LOAD["cpu_threads"])
-        if threads != model_threads:
-            model = None  # free the old model before loading the next (RAM)
-            model = load_model(threads)
-            model_threads = threads
-            # Warm-up call, not timed: the first call carries one-off start-up costs.
-            list(model.transcribe(clips[0][2][0].audio, **BASE_TRANSCRIBE)[0])
-            print("# warm-up done (not counted)", flush=True)
-            print("# G3 encoder-only time per segment, cpu_threads="
-                  f"{threads} (one pass on the padded 30 s window):")
-            for wav, _ref, segs in clips:
-                for s in segs:
-                    print(f"#   {wav.stem} seg {s.id}: {len(s.audio) / SR:5.2f} s audio -> "
-                          f"encoder {encoder_time(model, s.audio):.2f} s", flush=True)
-        if trans_kw.get("max_new_tokens") == "cap" and rate is None:
-            rate = token_rate(model)
-
-        print(f"\n=== variant {name}: load {load_kw or '-'}, transcribe {trans_kw or '-'}")
-        print(f"{'clip':7} {'seg':>3} {'len_s':>6} {'asr_s':>6} {'tokens':>6} {'cap':>4} "
-              f"{'passes':>6} {'compr':>6} {'logprob':>7} {'loop':>4}  text (first 60 chars)")
-        times, loops, cers = [], 0, []
-        for wav, ref_text, segs in clips:
-            hyps = []
-            for s in segs:
-                seg_s = len(s.audio) / SR
-                kw = dict(BASE_TRANSCRIBE, **trans_kw)
-                cap = None
-                if kw.get("max_new_tokens") == "cap":
-                    cap = min(math.ceil(rate * seg_s * CAP_MARGIN), MAX_NEW_TOKENS_LIMIT)
-                    kw["max_new_tokens"] = cap
-                r = run_variant(model, s.audio, kw)
-                looped = r["compression"] > LOOP_COMPRESSION or (cap is not None and r["tokens"] >= cap)
-                loops += looped
-                times.append(r["time"])
-                hyps.append(r["text"])
-                print(f"{wav.stem:7} {s.id:>3} {seg_s:6.2f} {r['time']:6.2f} {r['tokens']:>6} "
-                      f"{cap if cap is not None else '-':>4} {r['passes']:>6} {r['compression']:6.2f} "
-                      f"{r['logprob']:7.2f} {'YES' if looped else 'no':>4}  {r['text'][:60]}",
-                      flush=True)
-            c = cer(" ".join(hyps), ref_text)
-            cers.append((wav.stem, c))
-            print(f"{wav.stem}: CER {100 * c:.1f} %", flush=True)
-        line = (f"variant {name:12} total ASR {sum(times):6.1f} s  max {max(times):5.1f} s  "
-                f"loops {loops}/{len(times)}  CER " + ", ".join(f"{k} {100 * v:.1f} %" for k, v in cers))
-        print(line, flush=True)
-        summary.append(line)
+    for seg_cap in seg_caps:
+        audio_capture.CAP = int(seg_cap * SR)  # H2: this script only; Segmenter reads it at run time
+        print(f"\n##### segment cap {seg_cap:g} s", flush=True)
+        clips = load_clips(args.clips)
+        for name, load_kw, trans_kw in variants:
+            threads = load_kw.get("cpu_threads", BASE_LOAD["cpu_threads"])
+            if threads != model_threads:
+                model = None  # free the old model before loading the next (RAM)
+                model = load_model(threads)
+                model_threads = threads
+                # Warm-up call, not timed: the first call carries one-off start-up costs.
+                list(model.transcribe(clips[0][2][0].audio, **BASE_TRANSCRIBE)[0])
+                print("# warm-up done (not counted)", flush=True)
+                print("# G3 encoder-only time per segment, cpu_threads="
+                      f"{threads} (one pass on the padded 30 s window):")
+                for wav, _ref, segs in clips:
+                    for s in segs:
+                        print(f"#   {wav.stem} seg {s.id}: {len(s.audio) / SR:5.2f} s audio -> "
+                              f"encoder {encoder_time(model, s.audio):.2f} s", flush=True)
+            if trans_kw.get("max_new_tokens") == "cap" and rate is None:
+                rate = token_rate(model)
+            summary.append(run_one(model, rate, clips, seg_cap, name, load_kw, trans_kw))
 
     print("\n=== summary")
     for line in summary:

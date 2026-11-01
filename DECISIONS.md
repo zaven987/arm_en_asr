@@ -46,7 +46,7 @@
 
 ## 3. Current status
 
-- **Current milestone:** M3 — Walking skeleton, mic only (in progress).
+- **Current milestone:** latency fix (after M3, before M4; Zaven 2026-11-01).
 - **M3 started (2026-10-31):** plan S1–S8 agreed (handover 005). S1 done: `app.py` CLI, device and model checks, `pytest.ini`, T6 part 1 (3 tests pass; `command_outputs/m3_s1_pytest.txt`). sacremoses closed: not used at runtime (opus-mt runs with ctranslate2 + sentencepiece).
 - **S2 done:** fixtures committed (ids 1817, 1699). **S3 done:** audio_capture + T1.1 (passed; `command_outputs/m3_s3_pytest.txt`).
 - **S4 done (2026-11-01):** `asr.py` + T1.2 (passed, 2 tests; `command_outputs/m3_s4_pytest.txt`, `m3_s4b_pytest.txt`).
@@ -59,7 +59,7 @@
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M4 — diagnose the slow ASR found in the S8 file-mode run, then T2.
+- **Next step:** latency fix: `scripts/diag_asr.py` measurements (see `handovers/008-m3-done-to-latency-fix.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -169,6 +169,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
   - Transcribe: `language="hy"`, `task="transcribe"`, `vad_filter=False` (Silero segments, D8), `condition_on_previous_text=False` (explicit; has no effect on segments ≤ 12 s, since each segment is its own call), `beam_size=5`. Speed tuning belongs to M4 / R1.
   - Interface: `Asr(model_dir).transcribe(audio) -> str`; audio is the Segment's float32 mono 16 kHz array; pieces joined with spaces and stripped; `""` if Whisper returns nothing (what to do with empty lines: S7).
   - `Asr` itself checks `model_dir/model.bin` exists and raises a clear "model missing" error; otherwise faster-whisper would treat the path as a model name and try a download (working rule 2, D15).
+- Addition (Zaven, 2026-11-01, M4): `temperature=0.0` in `transcribe`, so faster-whisper decodes each segment once and never re-decodes at higher temperatures. Reason: the S8 file-mode run on `mic_01` reached 111 s latency, and fallback retries on low-confidence Armenian were the leading suspect. The 5 s latency rule comes before a small loss in ASR accuracy. Result: `command_outputs/m4_file_mic01_temp0.txt`: max latency 111.1 s → 29.6 s, no swap growth, but 4 of 7 segments now print Whisper repetition loops.
 
 **D4 — ASR bake-off after the skeleton (in M7), on our eval data + FLEURS.**
 - Candidates:
@@ -272,6 +273,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   download_mms.py + draft_mms.py (D15, D18; added 2026-10-30)
                           #   make_fixtures.py (D22; added 2026-10-31)
                           #   diag_mt.py (D5 MT loop diagnosis, runs in .venv-convert; added 2026-11-01)
+                          #   diag_asr.py (latency fix: Whisper speed / loop variants, runs in .venv; added 2026-11-01)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -362,7 +364,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |

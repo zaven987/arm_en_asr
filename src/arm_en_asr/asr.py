@@ -13,6 +13,8 @@ from faster_whisper import WhisperModel
 CPU_THREADS = 4   # A3: leave cores for capture + MT; tuned in M4 (T4)
 NUM_WORKERS = 1   # A3 / D1: default N = 1; must equal the pipeline's ASR worker count (P9)
 BEAM_SIZE = 5     # A2: faster-whisper default; speed tuning belongs to M4 (R1)
+TEMPERATURE = 0.0  # M4 (Zaven, 2026-11-01): decode once, no temperature fallback retries;
+                   # the 5 s latency rule comes before a small loss in accuracy (R1)
 
 
 class AsrError(Exception):
@@ -48,6 +50,7 @@ class Asr:
             vad_filter=False,                  # Silero already segments (D8)
             condition_on_previous_text=False,  # explicit; no effect on <= 12 s segments
             beam_size=BEAM_SIZE,
+            temperature=TEMPERATURE,           # single value: no fallback re-decoding
         )
         # `pieces` is a generator: decoding happens while it is consumed.
         return " ".join(p.text.strip() for p in pieces).strip()

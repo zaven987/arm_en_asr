@@ -39,7 +39,7 @@
 | T1.4 | Unit: `output` line format | M3 | passed |
 | T1.5 | Unit: `pipeline` join + order | M3 | passed |
 | T1.6 | Unit: `diarizer` | M6 | not run |
-| T2 | End-to-end latency, file mode | M4 (re-run M5) | not run |
+| T2 | End-to-end latency, file mode | M4 (re-run M5) | passed |
 | T3 | Capture smoke test (`hardware`) | M4 (mic), M5 (both) | not run |
 | T4 | Load test, D2 (`slow`) | M4 | not run |
 | T5 | Virtual-sink capture test | M9 | not run |
@@ -125,7 +125,7 @@
 - **Conditions:** demo conditions.
 - **Run:** `python app.py --mic-wav <eval clip>` (M5: add `--system-wav <eval clip>`). WAVs are fed at real-time speed.
 - **Pass:** every printed line has latency ≤ 5 s. Record median, p95 and max in the results log.
-- **Status:** not run
+- **Status:** passed (2026-11-01, mic only, see results log; re-run in M5 with `--system-wav`)
 
 ### T3 — Capture smoke test (`hardware`)
 - **Purpose:** real devices deliver real audio.
@@ -190,3 +190,6 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-01 | T1.4 | 6cf8810 | plain `python -m pytest -v -s` run | 4/4 T1.4 tests passed (exact section 8 format; 83 s → `[00:01:23]`, 83.9 s truncated; 5.1 s → warning; 4.9 s → none); whole default suite 13 passed in 6.09 s | passed | `command_outputs/m3_s6_pytest.txt` |
 | 2026-11-01 | T1.5 | 8a7b9a7 | plain `python -m pytest -v -s` run; stub ASR / MT, out-of-order finishing forced with Event gates (3 workers) | 7/7 T1.5 tests passed (join by id; ASR finished 3,2,1 → printed 1,2,3; mic = "Me", system refused; empty ASR text → no line, later lines print; latency = clock − end_wall; worker error and worker-count mismatch fail loudly); whole default suite 20 passed in 6.21 s | passed | `command_outputs/m3_s7_pytest.txt` |
 | 2026-11-01 | T6 | fb25231 | plain `python -m pytest -v -s` run; live on a real PulseAudio source, no person | 5/5 T6 tests passed (unknown --mic / --system device; missing model; unknown stdin command keeps running; quit → exit 0, "stopped", no parec left); whole default suite 22 passed in 8.40 s | passed | `command_outputs/m3_s8_pytest.txt` |
+| 2026-11-01 | T1.1 | ad8b730 | plain `python -m pytest -v -s` run; VAD cap 7 s (D26) | 3/3 T1.1 tests passed (speech, silence, cut at 7 s); whole default suite 23 passed in 6.82 s | passed | `command_outputs/d26_pytest.txt` |
+| 2026-11-01 | T1.2 | ad8b730 | same run; D26 ASR settings (greedy, no timestamps, token cap) | 3/3 T1.2 tests passed (Armenian text; missing model → clear error; token_cap follows D26) | passed | `command_outputs/d26_pytest.txt` |
+| 2026-11-01 | T2 | ad8b730 | file mode `mic_01` (61 s, real-time feed), mic only, N = 1, D26 settings; Meet/Zoom tab open: not confirmed | 11 lines; latency median 4.1 s, p95 4.8 s, max 4.8 s; 0 lines > 5 s; swap 1051 → 1051 MB; 5/11 lines end with ` ...` (L11) | passed | `command_outputs/d26_t2_mic01.txt` |

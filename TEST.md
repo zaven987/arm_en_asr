@@ -53,23 +53,24 @@
 
 #### T1.1 — `audio_capture` + VAD (file input)
 - **Purpose:** VAD produces correct segments from a file input.
-- **Linked:** D8, D10, R7, R12.
+- **Linked:** D8, D10, D26, R7, R12.
 - **Input:** speech fixture; silence fixture; ≥ 12 s continuous-speech fixture.
 - **Run:** `python -m pytest tests/test_audio_capture.py -v`
 - **Pass:**
-  - Speech fixture → at least 1 segment, each 0.3–12 s long, 16 kHz mono.
+  - Speech fixture → at least 1 segment, each 0.3–7 s long, 16 kHz mono.
   - Silence fixture → 0 segments.
-  - Continuous-speech fixture → cut at 12 s.
+  - Continuous-speech fixture → cut at the 7 s cap (D8, D26; was 12 s until 2026-11-01).
 - **Status:** passed (2026-10-31, see results log)
 
 #### T1.2 — `asr`
 - **Purpose:** ASR runs and returns Armenian text. This is a sanity check, not a quality bar.
-- **Linked:** D3, R5.
+- **Linked:** D3, D26, R5.
 - **Input:** speech fixture.
 - **Run:** `python -m pytest tests/test_asr.py -v`
 - **Pass:**
   - Speech fixture → non-empty text, and at least 50 % of its letters are Armenian script.
   - `Asr` pointed at an empty folder → fails with a clear "model missing" error; no download attempted (A6, D15).
+  - `token_cap` follows D26: 1.65 s → 40, 4.5 s → 107, 7 s → 166, 20 s → 220 tokens.
 - **Status:** passed (2026-11-01, see results log)
 
 #### T1.3 — `translate`

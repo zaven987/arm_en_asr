@@ -22,7 +22,7 @@ CONTEXT = 64              # previous samples prepended (Silero v5/v6 ONNX interf
 THRESHOLD = 0.5           # V1: window is speech if p > 0.5
 END_SILENCE_S = 0.6       # D8: this much non-speech ends a segment
 MIN_SPEECH_S = 0.3        # D8: shorter speech is dropped
-CAP_S = 12.0              # D8 / V2: hard cap on segment audio length
+CAP_S = 7.0               # D8 / V2 / D26: hard cap on segment audio length (was 12 s)
 PAD_S = 0.2               # V3: audio kept before first and after last speech window
 
 END_SILENCE = int(END_SILENCE_S * SR)

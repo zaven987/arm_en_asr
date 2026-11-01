@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from arm_en_asr.audio_capture import (
-    SR, Segmenter, SileroVad, WavSource, new_id_counter, run_capture,
+    CAP_S, SR, Segmenter, SileroVad, WavSource, new_id_counter, run_capture,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,17 +35,19 @@ def test_speech_fixture_gives_segments():
     assert len(segs) >= 1
     for s in segs:
         assert_16k_mono(s)
-        assert 0.3 <= len(s.audio) / SR <= 12.0, f"segment {s.id}: {len(s.audio) / SR:.2f} s"
+        assert 0.3 <= len(s.audio) / SR <= CAP_S, f"segment {s.id}: {len(s.audio) / SR:.2f} s"
 
 
 def test_silence_fixture_gives_no_segments():
     assert segments_of("silence_5s.wav") == []
 
 
-def test_continuous_speech_is_cut_at_12s():
+def test_continuous_speech_is_cut_at_cap():
+    """D8 / D26: the cap is CAP_S (7 s); speech_long.wav has >= 13 s of unbroken speech."""
     segs = segments_of("speech_long.wav")
     lengths = [len(s.audio) / SR for s in segs]
-    assert all(n <= 12.0 for n in lengths), lengths
-    assert any(len(s.audio) == 12 * SR for s in segs), f"no segment of exactly 12 s: {lengths}"
+    assert all(n <= CAP_S for n in lengths), lengths
+    assert any(len(s.audio) == int(CAP_S * SR) for s in segs), (
+        f"no segment of exactly {CAP_S:g} s: {lengths}")
     for s in segs:
         assert_16k_mono(s)

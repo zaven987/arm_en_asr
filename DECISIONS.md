@@ -59,7 +59,7 @@
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** latency fix, option B (D26): diag_asr.py run with shorter segment caps.
+- **Next step:** latency fix, option B (D26): K2–K4 code written; run the default pytest suite, then T2 on `mic_01`.
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -171,6 +171,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
   - Interface: `Asr(model_dir).transcribe(audio) -> str`; audio is the Segment's float32 mono 16 kHz array; pieces joined with spaces and stripped; `""` if Whisper returns nothing (what to do with empty lines: S7).
   - `Asr` itself checks `model_dir/model.bin` exists and raises a clear "model missing" error; otherwise faster-whisper would treat the path as a model name and try a download (working rule 2, D15).
 - Addition (Zaven, 2026-11-01, M4): `temperature=0.0` in `transcribe`, so faster-whisper decodes each segment once and never re-decodes at higher temperatures. Reason: the S8 file-mode run on `mic_01` reached 111 s latency, and fallback retries on low-confidence Armenian were the leading suspect. The 5 s latency rule comes before a small loss in ASR accuracy. Result: `command_outputs/m4_file_mic01_temp0.txt`: max latency 111.1 s → 29.6 s, no swap growth, but 4 of 7 segments now print Whisper repetition loops.
+- Addition (Zaven, 2026-11-01, D26): `transcribe` now uses `beam_size=1` (replacing A2's 5), `without_timestamps=True`, and the D26 token cap (`max_new_tokens` = 2 × `token_cap(segment seconds)`). When the cap is hit, the text ends with ` ...` (L11).
 
 **D4 — ASR bake-off after the skeleton (in M7), on our eval data + FLEURS.**
 - Candidates:
@@ -211,6 +212,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 **D8 — VAD: Silero VAD (ONNX, MIT).**
 - Settings: end of phrase = 0.6 s silence; ignore speech < 0.3 s; **hard cap 12 s per segment**.
 - Known trade-off: the 12 s cap may cut mid-word / mid-sentence. Revisit in the quality pass (M8) if time allows.
+- Addition (Zaven, 2026-11-01, D26): the hard cap is now **7 s** (was 12 s), for latency; see D26 for the measurements.
 - Addition (agreed 2026-10-31, M3 S3): Silero runs on 512-sample windows; a window is speech if p > 0.5 (the two-threshold variant 0.5 / 0.35 waits for M8 if the VAD turns out choppy). At the 12 s cap the segment closes at exactly 12 s and the next one starts with the remaining audio (nothing lost). 0.2 s of audio is kept before the first and after the last speech window, counted inside the cap. At end of stream (end of file or `quit`) an open segment is closed and emitted.
 
 **D9 — Diarizer: chosen at its milestone (M6).**
@@ -244,6 +246,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - Lines whose latency > 5 s get a visible warning.
 - Addition (agreed 2026-10-31): `Segment` = `{id, device, start, end, audio, end_wall}`. `start` / `end` = first / last speech sample in seconds from session start, counted by samples. `end_wall` = `time.monotonic()` arrival of the chunk holding the last speech sample; latency is measured from it, so the 0.6 s end silence counts inside the 5 s.
 - Addition (agreed 2026-11-01, M3 S6, O1–O6): `output.py` has a `Record` `{segment_id, speaker, start, armenian, english, latency}`, a pure `format_line(record) -> str` (T1.4) and `print_line(record)`, which prints with `flush=True`; S7 measures latency just before calling it. The offset `[HH:MM:SS]` is truncated, not rounded (83.9 s → `[00:01:23]`). The layout is exactly section 8: 2 spaces after the colon, an 11-space indent, 3 spaces before `(`, latency to 1 decimal. A warning `(5.3s ⚠ >5s)` is shown when the raw latency is > 5.0 s, so 5.04 s shows `(5.0s ⚠ >5s)`. Empty text is formatted as given; whether to skip it is decided in S7. Plain text only, no colours, no new dependency.
+- Addition (Zaven, 2026-11-01, D26): the Armenian text can end with ` ...` when the ASR token cap stopped it (L11). The marker is part of the ASR text, so `output.py` and the line format do not change.
 
 **D13 — Print order: by when speech ended.** (see Known limitation L5)
 - Addition (agreed 2026-11-01, M3 S7, P3, P4): each segment gets a sequence number when it is submitted, i.e. when its end was detected; the output thread prints in that order, and a finished result waits until every earlier one is printed or skipped (cross-device case: L5). A segment whose ASR text is empty after stripping is skipped: no MT call, no line, and its place in the order is released. Empty English for non-empty Armenian is still printed.
@@ -355,6 +358,8 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Why: `latency_diag_asr_f.txt`: a full 12 s segment needs ≈ 5.5 s of ASR even with greedy decoding (≈ 1.9 s encoder + ≈ 190 tokens × 17 ms); shorter segments mean fewer tokens per call.
 - Trade-offs: more segments cut mid-word (L4; this was M8 work, now pulled forward); greedy decoding has a worse CER than beam 5 (g+b vs g); the 1.9 s encoder cost per segment stays.
 - Alternatives: see D25.
+- Addition (Zaven, 2026-11-01): values chosen from `command_outputs/latency_diag_asr_segcap.txt` (g+b+c on mic_01–03, segment caps 6 / 7 / 8 s): **VAD segment cap 7 s** (D8). At 7 s: max ASR 4.7 s per segment (6 s: 4.4 s; 8 s: 5.1 s), CER 59.0 / 45.8 / 36.1 % (6 s: 68.5 / 45.6 / 53.5 %; 8 s: 68.4 / 52.2 / 62.9 %). Token cap: allowed tokens = ceil(15.8 tok/s × segment length × 1.5), at most 220, passed as `max_new_tokens` = 2 × that, because CTranslate2 generates at most half of `max_length` (prompt + `max_new_tokens`); this rule fits every measured value (`diag_asr.py` H1). Known cost: 13 of 31 segments hit the cap at 7 s (mostly greedy over-generation such as «եմ եմ եմ …»); their text stops at the cap and what came before is printed. CER is worse than Whisper beam 5 at 12 s (32.5 / 19.5 / 34.5 %), which broke 5 s.
+- Addition (Zaven, 2026-11-01): a segment whose text was stopped by the token cap is shown with ` ...` at the end of its Armenian text, so the cut is visible, never silent (working rule 2, L11). Code: `asr.py` (`token_cap`, `CUT_MARKER`); T1.2 tests `token_cap`.
 
 ---
 
@@ -410,13 +415,14 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 - **L1 Echo:** with speakers instead of headphones, call audio leaks into the mic and appears as duplicate "Me" lines (out of scope, will not fix).
 - **L2 Overlapping speech:** no special handling; text or speaker label may be wrong when people talk at the same time.
 - **L3 Code-switching:** Russian/English words inside Armenian speech are processed as-is; models may get them wrong.
-- **L4 Segment cap 12 s:** long speech without pauses is cut at 12 s, possibly mid-word.
+- **L4 Segment cap 7 s** (12 s until 2026-11-01, D26): long speech without pauses is cut at 7 s, possibly mid-word.
 - **L5 Print order by speech end:** example — Speaker 1 talks 00:10–00:25, Me says something short 00:15–00:17 → the `[00:00:15] Me` line prints *before* `[00:00:10] Speaker 1`, so timestamps appear out of order. Also (agreed 2026-11-01, M3 S7, P3): lines print in the order segments were submitted, i.e. when each segment's end was detected. A segment cut at the 12 s cap is submitted at once, one that ends in silence 0.6 s later, so with two devices (M5 on) two segments that end within 0.6 s of each other can print swapped.
 - **L6 Mic is always "Me":** even if another person speaks into the mic.
 - **L7 Final lines only:** no partial text while someone is speaking.
 - **L8 Remote speakers:** diarization is tuned and tested for 1–2 remote speakers first.
 - **L9 Demo assumption:** sized for "browser video call open + laptop plugged in"; other setups not yet verified.
 - **L10 Weak MT (opus-mt-hy-en):** the skeleton MT model is a weak point. Even on clean reference Armenian it often gives fluent English with the wrong meaning (e.g. FLEURS «Մարզընկեր ըմբիշները … Լունային» → "I think they're also paying a debt of respect"), and on some inputs (numbers like «6-6», hyphenated words) it can fall into a repetition loop («6-6-6-…-a-a-a-…»). Loop: diagnosed and guarded in M3 S5 (D5). Meaning errors: measured and compared with NLLB in the M7 bake-off.
+- **L11 Cut-off lines (` ...`):** with greedy decoding Whisper sometimes keeps repeating (e.g. «եմ եմ եմ …»). The D26 token cap stops it in time, and the Armenian line then ends with ` ...` to show the text was cut; the repeated words before the cut are still printed. On `mic_01`–`03` this happened on 13 of 31 segments. The marker also goes into MT, so the English line may or may not show it.
 
 ---
 

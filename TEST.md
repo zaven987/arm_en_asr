@@ -35,7 +35,7 @@
 |---|---|---|---|
 | T1.1 | Unit: `audio_capture` + VAD (file input) | M3 | passed |
 | T1.2 | Unit: `asr` | M3 | passed |
-| T1.3 | Unit: `translate` | M3 | not run |
+| T1.3 | Unit: `translate` | M3 | passed |
 | T1.4 | Unit: `output` line format | M3 | not run |
 | T1.5 | Unit: `pipeline` join + order | M3 | not run |
 | T1.6 | Unit: `diarizer` | M6 | not run |
@@ -80,7 +80,7 @@
 - **Pass:**
   - Non-empty English for each sentence, with no Armenian characters.
   - Each English output is at most 2× the length of its Armenian input, in characters (catches repetition loops; D5, L10).
-- **Status:** not run
+- **Status:** passed (2026-11-01, see results log)
 
 #### T1.4 — `output` line format
 - **Purpose:** the terminal line matches the agreed format.
@@ -182,3 +182,4 @@ Rows are only ever appended, never edited. One row per run.
 | — | — | — | — | — | — | — |
 | 2026-10-31 | T1.1 | 83c9def | file input fed with `realtime=False` (V6); plain `python -m pytest -v` run | 3/3 T1.1 tests passed (speech, silence, 12 s cut); whole default suite 6 passed in 0.34 s | passed | `command_outputs/m3_s3_pytest.txt` |
 | 2026-11-01 | T1.2 | 6720d83 | plain `python -m pytest -v -s` run | 2/2 T1.2 tests passed (Armenian text 100 % Armenian letters; missing model → clear error); whole default suite 8 passed in 5.19 s | passed | `command_outputs/m3_s4_pytest.txt`, `command_outputs/m3_s4b_pytest.txt` |
+| 2026-11-01 | T1.3 | ff6cef1 | plain `python -m pytest -v -s` run; `no_repeat_ngram_size=3` (D5 C1) | 1/1 T1.3 test passed (3 FLEURS sentences: non-empty English, no Armenian letters, length ≤ 2× Armenian); whole default suite 9 passed in 6.07 s | passed | `command_outputs/m3_s5b_pytest.txt`; first run without the fix looped on sentence 2 (`m3_s5_pytest.txt`, `m3_s5_diag_mt.txt`) |

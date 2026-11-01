@@ -77,7 +77,9 @@
 - **Linked:** D5, R6.
 - **Input:** 3 FLEURS hy_am sentences (reference text).
 - **Run:** `python -m pytest tests/test_translate.py -v`
-- **Pass:** non-empty English for each sentence, with no Armenian characters.
+- **Pass:**
+  - Non-empty English for each sentence, with no Armenian characters.
+  - Each English output is at most 2× the length of its Armenian input, in characters (catches repetition loops; D5, L10).
 - **Status:** not run
 
 #### T1.4 — `output` line format

@@ -50,12 +50,13 @@
 - **M3 started (2026-10-31):** plan S1–S8 agreed (handover 005). S1 done: `app.py` CLI, device and model checks, `pytest.ini`, T6 part 1 (3 tests pass; `command_outputs/m3_s1_pytest.txt`). sacremoses closed: not used at runtime (opus-mt runs with ctranslate2 + sentencepiece).
 - **S2 done:** fixtures committed (ids 1817, 1699). **S3 done:** audio_capture + T1.1 (passed; `command_outputs/m3_s3_pytest.txt`).
 - **S4 done (2026-11-01):** `asr.py` + T1.2 (passed, 2 tests; `command_outputs/m3_s4_pytest.txt`, `m3_s4b_pytest.txt`).
+- **S5 in progress (2026-11-01):** B1–B6 agreed (D5); `translate.py` + `tests/test_translate.py` written; T1.3 passed its checks, but sentence 2 came out as a repetition loop (`command_outputs/m3_s5_pytest.txt`, L10). Diagnosis with `scripts/diag_mt.py` (`command_outputs/m3_s5_diag_mt.txt`): the model itself loops; fixed with `no_repeat_ngram_size=3` (D5); T1.3 gets a length check; T1.3 to be re-run.
 - **M2 done (2026-10-31):** reference CSVs written and reviewed: `eval/meta/mic_01`–`03.csv`, `eval/meta/sys_01.csv` (4 clips, D17; verbatim, D18); FLEURS subset `eval/meta/fleurs_hy_am_test100.csv` (D19).
 - **Done in M2 (2026-10-30/31):** FLEURS subset built: 100 clips, 19.5 min, 4.7–30.9 s, 36 longer than 12 s (D19; `command_outputs/m2_fleurs_subset.txt`). MMS-1B-all downloaded (revision `3d33597…`) and run by `scripts/draft_mms.py` to draft references (D15, D18; peak RAM 4.8 GB); Zaven corrected the drafts, Claude added English. NVIDIA Armenian FastConformer added to the M7 bake-off (D4).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M3 S5 — `translate.py` + T1.3 (see `handovers/006-m3-s3-done-to-s4.md`).
+- **Next step:** M3 S5 — re-run T1.3 with the loop fix, then S6 `output.py` + T1.4 (see `handovers/006-m3-s3-done-to-s4.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -180,6 +181,20 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 **D5 — Skeleton MT: `Helsinki-NLP/opus-mt-hy-en` (Marian), via CTranslate2 int8.**
 - Why: ~0.1 GB. Whisper (0.5 GB) + NLLB (0.7 GB) + diarizer + Zoom (~1 GB) would push us to the ~2.4 GB limit.
 - Bake-off candidate (M7): NLLB-200-distilled-600M (int8, ~0.6–0.7 GB, CC-BY-NC — OK for us), usually better quality.
+- Addition (agreed 2026-11-01, M3 S5, B1–B6):
+  - Load: `ctranslate2.Translator(models/opus-mt-hy-en-ct2-int8, device="cpu", compute_type="int8", inter_threads=1, intra_threads=2)`; 2 threads so ASR keeps its 4 (D3); T4 tunes it.
+  - Tokenisation as in the M1 smoke run: `source.spm` encode + `</s>`; decode with `target.spm`, dropping `</s>`.
+  - One call per segment, no sentence splitting (M1 weakness on long input revisited in M7/M8); `beam_size=2` (CTranslate2 default, set explicitly).
+  - Interface: `Mt(model_dir).translate(armenian) -> str` (class named `Mt`, not `Translator`, to avoid confusion with `ctranslate2.Translator`); empty input → `""` without calling the model.
+  - `Mt` checks `model.bin`, `source.spm`, `target.spm` exist and raises a clear "model missing" error naming the file (working rule 2, D15). No separate test for it.
+  - T1.3 input: `armenian` text of the first 3 rows of `eval/meta/fleurs_hy_am_test100.csv`.
+- Addition (agreed 2026-11-01, M3 S5): the first T1.3 run showed a repetition loop on FLEURS sentence 2 («6-6-6-…-a-a-a-…» up to CTranslate2's 256-token limit; L10). Diagnosis: `scripts/diag_mt.py` (committed) compares beam 2 / 3 / 6, int8 vs float32, the original PyTorch model, `no_repeat_ngram_size=3`, `repetition_penalty=1.2` and ":" → "։". **Time-box 30 minutes**; if no clean fix is found in that time, `no_repeat_ngram_size=3` is added. Any change to B3 is agreed before `translate.py` changes.
+- Addition (agreed 2026-11-01, M3 S5, C1–C3): result of `diag_mt.py` (`command_outputs/m3_s5_diag_mt.txt`).
+  - Finding: the loop is in the **model itself**. The original PyTorch model loops on sentence 2 too (beam 2 and 6, up to its 512-token limit), so conversion, int8 and tokenisation are not the cause. Beam 3 and beam 6, float32, `repetition_penalty=1.2` and ":" → "։" all still loop; a wider beam is only slower (beam 6 ≈ 2×), float32 ≈ 3–4× slower with no better output.
+  - **C1 fix:** `no_repeat_ngram_size=3`, with int8 and `beam_size=2` kept (B1, B3 unchanged). It was the only variant that stopped the loop (sentence 2: 28 tokens, 0.14 s instead of 256 tokens, 1.5 s), and it left sentences 1 and 3 almost unchanged at no extra time.
+  - **Trade-off:** the English output of one segment can never contain the same 3-token sequence twice, even when the speaker really repeats it (e.g. a phrase said twice, or a score like «6-6-6»). Such repeats are rare inside one segment of ≤ 12 s; when they occur, the English may drop or reword the repeat. The fix stops the loop but does not fix meaning: sentence 2 still translates «6-6» as "six or six" (L10, M7).
+  - **C2:** T1.3 also checks that each English output is at most 2× its Armenian input in characters, so a loop now fails the test. In `diag_mt.py`, normal outputs were 0.72–1.64× and the CTranslate2 loop (stopped at 256 tokens) 2.32–2.47×; the margin is narrow, so if T1.3 inputs change, the 2× limit is re-checked.
+  - **C3 rejected:** no output-length cap (`max_decoding_length` tied to input length); C1 already fixes the measured loop.
 
 **D6 — Separate ASR + MT. Merged speech→English model rejected.**
 - Why: we must show Armenian text anyway, so a single speech→English model is not enough; SeamlessM4T (main merged option) is too large for this laptop.
@@ -249,6 +264,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   download_models.py (D15; moved here 2026-10-30), fetch_fleurs.py (D19), smoke_m1.py (M1),
                           #   download_mms.py + draft_mms.py (D15, D18; added 2026-10-30)
                           #   make_fixtures.py (D22; added 2026-10-31)
+                          #   diag_mt.py (D5 MT loop diagnosis, runs in .venv-convert; added 2026-11-01)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -372,6 +388,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 - **L7 Final lines only:** no partial text while someone is speaking.
 - **L8 Remote speakers:** diarization is tuned and tested for 1–2 remote speakers first.
 - **L9 Demo assumption:** sized for "browser video call open + laptop plugged in"; other setups not yet verified.
+- **L10 Weak MT (opus-mt-hy-en):** the skeleton MT model is a weak point. Even on clean reference Armenian it often gives fluent English with the wrong meaning (e.g. FLEURS «Մարզընկեր ըմբիշները … Լունային» → "I think they're also paying a debt of respect"), and on some inputs (numbers like «6-6», hyphenated words) it can fall into a repetition loop («6-6-6-…-a-a-a-…»). Loop: diagnosed and guarded in M3 S5 (D5). Meaning errors: measured and compared with NLLB in the M7 bake-off.
 
 ---
 

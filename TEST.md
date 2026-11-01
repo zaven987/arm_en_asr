@@ -37,7 +37,7 @@
 | T1.2 | Unit: `asr` | M3 | passed |
 | T1.3 | Unit: `translate` | M3 | passed |
 | T1.4 | Unit: `output` line format | M3 | passed |
-| T1.5 | Unit: `pipeline` join + order | M3 | not run |
+| T1.5 | Unit: `pipeline` join + order | M3 | passed |
 | T1.6 | Unit: `diarizer` | M6 | not run |
 | T2 | End-to-end latency, file mode | M4 (re-run M5) | not run |
 | T3 | Capture smoke test (`hardware`) | M4 (mic), M5 (both) | not run |
@@ -105,7 +105,7 @@
   - A segment with empty ASR text prints no line, and later lines still print.
   - Latency = print time − `end_wall`.
   - A worker error or a worker-count mismatch makes the pipeline fail loudly.
-- **Status:** not run
+- **Status:** passed (2026-11-01, see results log)
 
 #### T1.6 — `diarizer` (M6)
 - **Purpose:** speaker labels stay stable.
@@ -187,3 +187,4 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-01 | T1.2 | 6720d83 | plain `python -m pytest -v -s` run | 2/2 T1.2 tests passed (Armenian text 100 % Armenian letters; missing model → clear error); whole default suite 8 passed in 5.19 s | passed | `command_outputs/m3_s4_pytest.txt`, `command_outputs/m3_s4b_pytest.txt` |
 | 2026-11-01 | T1.3 | ff6cef1 | plain `python -m pytest -v -s` run; `no_repeat_ngram_size=3` (D5 C1) | 1/1 T1.3 test passed (3 FLEURS sentences: non-empty English, no Armenian letters, length ≤ 2× Armenian); whole default suite 9 passed in 6.07 s | passed | `command_outputs/m3_s5b_pytest.txt`; first run without the fix looped on sentence 2 (`m3_s5_pytest.txt`, `m3_s5_diag_mt.txt`) |
 | 2026-11-01 | T1.4 | 6cf8810 | plain `python -m pytest -v -s` run | 4/4 T1.4 tests passed (exact section 8 format; 83 s → `[00:01:23]`, 83.9 s truncated; 5.1 s → warning; 4.9 s → none); whole default suite 13 passed in 6.09 s | passed | `command_outputs/m3_s6_pytest.txt` |
+| 2026-11-01 | T1.5 | 8a7b9a7 | plain `python -m pytest -v -s` run; stub ASR / MT, out-of-order finishing forced with Event gates (3 workers) | 7/7 T1.5 tests passed (join by id; ASR finished 3,2,1 → printed 1,2,3; mic = "Me", system refused; empty ASR text → no line, later lines print; latency = clock − end_wall; worker error and worker-count mismatch fail loudly); whole default suite 20 passed in 6.21 s | passed | `command_outputs/m3_s7_pytest.txt` |

@@ -52,12 +52,13 @@
 - **S4 done (2026-11-01):** `asr.py` + T1.2 (passed, 2 tests; `command_outputs/m3_s4_pytest.txt`, `m3_s4b_pytest.txt`).
 - **S5 done (2026-11-01):** `translate.py` + T1.3 (passed; `command_outputs/m3_s5b_pytest.txt`). opus-mt repetition loop found and fixed with `no_repeat_ngram_size=3` (D5, L10; `scripts/diag_mt.py`, `command_outputs/m3_s5_diag_mt.txt`).
 - **S6 done (2026-11-01):** `output.py` + T1.4 (passed, 4 tests; `command_outputs/m3_s6_pytest.txt`). Line format and latency warning as D12 (O1–O6).
+- **S7 done (2026-11-01):** `pipeline.py` + T1.5 (passed, 7 tests; `command_outputs/m3_s7_pytest.txt`); `Asr` takes `num_workers` (D1, D3, D13 additions; L5 note).
 - **M2 done (2026-10-31):** reference CSVs written and reviewed: `eval/meta/mic_01`–`03.csv`, `eval/meta/sys_01.csv` (4 clips, D17; verbatim, D18); FLEURS subset `eval/meta/fleurs_hy_am_test100.csv` (D19).
 - **Done in M2 (2026-10-30/31):** FLEURS subset built: 100 clips, 19.5 min, 4.7–30.9 s, 36 longer than 12 s (D19; `command_outputs/m2_fleurs_subset.txt`). MMS-1B-all downloaded (revision `3d33597…`) and run by `scripts/draft_mms.py` to draft references (D15, D18; peak RAM 4.8 GB); Zaven corrected the drafts, Claude added English. NVIDIA Armenian FastConformer added to the M7 bake-off (D4).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M3 S7 — `pipeline.py` + T1.5 (see `handovers/007-m3-s5-done-to-s6.md`).
+- **Next step:** M3 S8 — connect everything in `app.py` + T6 part 2 + first manual runs (see `handovers/007-m3-s5-done-to-s6.md`).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -151,6 +152,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 - Why: separate processes would each load their own model copy and break the RAM limit; CTranslate2 / onnxruntime release the Python GIL, so threads run truly in parallel.
 - Backlog: any line over 5 s gets a visible warning; app keeps running.
 - Alternatives: multiprocessing (rejected: RAM); strictly sequential flow (rejected: latency).
+- Addition (agreed 2026-11-01, M3 S7, P1, P2, P5, P7–P9): `pipeline.py` has `Pipeline(asr, mt, n_workers=1, printer=print_line, clock=time.monotonic)`. `submit(segment)` is called from the capture thread; `check()` raises a stored worker error; `close()` drains everything submitted (printed or skipped), stops all threads and raises any error. Threads: N ASR workers → one MT thread → one output thread (join, order, latency, print); queues are unbounded, nothing is dropped. A worker exception stops the pipeline and is raised as `PipelineError` naming the stage and segment id. One shutdown path: `close()`; for `quit`, capture stops first, then `close()`, so segments already captured still print. `Asr(model_dir, num_workers=1)`; the pipeline refuses `asr.num_workers` ≠ `n_workers` (D3). Mic segments are always "Me"; until M5/M6 a system segment is refused with a clear error.
 
 **D2 — Load test.**
 - What: feed K simultaneous segments (from eval clips) with N = 1, 2, 3 ASR workers, with a real Meet/Zoom tab open. Record: peak RSS, swap use, per-segment latency (median / p95 / max), throughput (segments per minute).
@@ -240,6 +242,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - Addition (agreed 2026-11-01, M3 S6, O1–O6): `output.py` has a `Record` `{segment_id, speaker, start, armenian, english, latency}`, a pure `format_line(record) -> str` (T1.4) and `print_line(record)`, which prints with `flush=True`; S7 measures latency just before calling it. The offset `[HH:MM:SS]` is truncated, not rounded (83.9 s → `[00:01:23]`). The layout is exactly section 8: 2 spaces after the colon, an 11-space indent, 3 spaces before `(`, latency to 1 decimal. A warning `(5.3s ⚠ >5s)` is shown when the raw latency is > 5.0 s, so 5.04 s shows `(5.0s ⚠ >5s)`. Empty text is formatted as given; whether to skip it is decided in S7. Plain text only, no colours, no new dependency.
 
 **D13 — Print order: by when speech ended.** (see Known limitation L5)
+- Addition (agreed 2026-11-01, M3 S7, P3, P4): each segment gets a sequence number when it is submitted, i.e. when its end was detected; the output thread prints in that order, and a finished result waits until every earlier one is printed or skipped (cross-device case: L5). A segment whose ASR text is empty after stripping is skipped: no MT call, no line, and its place in the order is released. Empty English for non-empty Armenian is still printed.
 
 **D14 — Environment: uv + Python 3.10.12.**
 - `uv venv --python 3.10` creates `.venv`; install with `uv pip install -r requirements.txt`; all versions pinned in `requirements.txt`.

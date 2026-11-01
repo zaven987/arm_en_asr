@@ -43,7 +43,7 @@
 | T3 | Capture smoke test (`hardware`) | M4 (mic), M5 (both) | not run |
 | T4 | Load test, D2 (`slow`) | M4 | not run |
 | T5 | Virtual-sink capture test | M9 | not run |
-| T6 | CLI fail-loudly checks | M3 | not run |
+| T6 | CLI fail-loudly checks | M3 | passed |
 
 ---
 
@@ -172,7 +172,7 @@
   - **Missing model** → the app exits with a non-zero code and a clear error naming the model. No download is attempted.
   - **Unknown stdin command** (any text other than `quit`) → prints "unknown command" and keeps running.
   - **`quit` + Enter** → clean shutdown with exit code 0. All `parec` subprocesses and worker threads are stopped.
-- **Status:** not run
+- **Status:** passed (2026-11-01, see results log)
 
 ---
 
@@ -188,3 +188,4 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-01 | T1.3 | ff6cef1 | plain `python -m pytest -v -s` run; `no_repeat_ngram_size=3` (D5 C1) | 1/1 T1.3 test passed (3 FLEURS sentences: non-empty English, no Armenian letters, length ≤ 2× Armenian); whole default suite 9 passed in 6.07 s | passed | `command_outputs/m3_s5b_pytest.txt`; first run without the fix looped on sentence 2 (`m3_s5_pytest.txt`, `m3_s5_diag_mt.txt`) |
 | 2026-11-01 | T1.4 | 6cf8810 | plain `python -m pytest -v -s` run | 4/4 T1.4 tests passed (exact section 8 format; 83 s → `[00:01:23]`, 83.9 s truncated; 5.1 s → warning; 4.9 s → none); whole default suite 13 passed in 6.09 s | passed | `command_outputs/m3_s6_pytest.txt` |
 | 2026-11-01 | T1.5 | 8a7b9a7 | plain `python -m pytest -v -s` run; stub ASR / MT, out-of-order finishing forced with Event gates (3 workers) | 7/7 T1.5 tests passed (join by id; ASR finished 3,2,1 → printed 1,2,3; mic = "Me", system refused; empty ASR text → no line, later lines print; latency = clock − end_wall; worker error and worker-count mismatch fail loudly); whole default suite 20 passed in 6.21 s | passed | `command_outputs/m3_s7_pytest.txt` |
+| 2026-11-01 | T6 | fb25231 | plain `python -m pytest -v -s` run; live on a real PulseAudio source, no person | 5/5 T6 tests passed (unknown --mic / --system device; missing model; unknown stdin command keeps running; quit → exit 0, "stopped", no parec left); whole default suite 22 passed in 8.40 s | passed | `command_outputs/m3_s8_pytest.txt` |

@@ -53,12 +53,13 @@
 - **S5 done (2026-11-01):** `translate.py` + T1.3 (passed; `command_outputs/m3_s5b_pytest.txt`). opus-mt repetition loop found and fixed with `no_repeat_ngram_size=3` (D5, L10; `scripts/diag_mt.py`, `command_outputs/m3_s5_diag_mt.txt`).
 - **S6 done (2026-11-01):** `output.py` + T1.4 (passed, 4 tests; `command_outputs/m3_s6_pytest.txt`). Line format and latency warning as D12 (O1–O6).
 - **S7 done (2026-11-01):** `pipeline.py` + T1.5 (passed, 7 tests; `command_outputs/m3_s7_pytest.txt`); `Asr` takes `num_workers` (D1, D3, D13 additions; L5 note).
+- **S8 done, M3 done (2026-11-01):** app connected (live mic + file mode, quit, Ctrl+C) + T6 (passed; `command_outputs/m3_s8_pytest.txt`). First manual runs: live short phrases 2.9–3.1 s; file mode `mic_01` 3.2 s → 111.1 s, a backlog (`command_outputs/m3_s8_file_mic01.txt`, `m3_s8_live.txt`; R1).
 - **M2 done (2026-10-31):** reference CSVs written and reviewed: `eval/meta/mic_01`–`03.csv`, `eval/meta/sys_01.csv` (4 clips, D17; verbatim, D18); FLEURS subset `eval/meta/fleurs_hy_am_test100.csv` (D19).
 - **Done in M2 (2026-10-30/31):** FLEURS subset built: 100 clips, 19.5 min, 4.7–30.9 s, 36 longer than 12 s (D19; `command_outputs/m2_fleurs_subset.txt`). MMS-1B-all downloaded (revision `3d33597…`) and run by `scripts/draft_mms.py` to draft references (D15, D18; peak RAM 4.8 GB); Zaven corrected the drafts, Claude added English. NVIDIA Armenian FastConformer added to the M7 bake-off (D4).
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M3 S8 — connect everything in `app.py` + T6 part 2 + first manual runs (see `handovers/007-m3-s5-done-to-s6.md`).
+- **Next step:** M4 — diagnose the slow ASR found in the S8 file-mode run, then T2.
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -234,6 +235,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - Addition (agreed 2026-10-31): T6 tests "missing model" by calling `app.main()` in-process with `MODELS_DIR` pointed at an empty folder; no new CLI option. The "unknown device" tests need PulseAudio running but no person, so they are not marked `hardware`.
 - Addition (agreed 2026-10-31): until M5, `--system` / `--system-wav` are checked (device name / file exists) and then refused with a clear error, never silently ignored (working rule 2).
 - Addition (agreed 2026-10-31), replacing "from M5 on both are required" above: at least one of `--mic` / `--system` is given; either may be left out. The same applies to `--mic-wav` / `--system-wav`.
+- Addition (agreed 2026-11-01, M3 S8, Q1–Q9): startup order: checks → models → pipeline → capture → stdin reader; the session clock starts at the first captured sample. Transcript lines go to stdout, all other messages to stderr (`loading models…`, `listening on …` / `playing …`, `stopped`). `quit` → exit 0; any other non-blank text → `unknown command: '<text>'`, keeps running; blank lines are ignored; end of stdin stops command reading only. File mode ends by itself with exit 0 once every line is printed. A lost device or a pipeline error drains what was captured, then exits 1 with `ERROR: …`. Ctrl+C = the same clean shutdown, exit 130 (a second Ctrl+C stops at once). `parec` runs in its own session, so Ctrl+C reaches only the app, which stops `parec` itself.
 
 **D12 — Output line shows speaker, start offset (HH:MM:SS), Armenian, English, and measured latency** (format in section 8).
 - Latency = time the line is printed − time the speech segment ended.
@@ -342,7 +344,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 | M0 | Planning: questions, DECISIONS.md, TEST.md | 1.5 | ☑ done (2026-10-29) |
 | M1 | Environment (uv), `scripts/download_models.py`, smoke-run each model on one Armenian clip, RAM check | 1.5 | ☑ done (2026-10-30) |
 | M2 | Eval data v0: Zaven's clips (4, D17) + CSVs; FLEURS subset | 2 | ☑ done (2026-10-31) |
-| M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☐ not done |
+| M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☑ done (2026-11-01) |
 | M4 | Initial tests: unit, end-to-end latency, capture smoke, load test (D2) | 2 | ☐ not done |
 | M5 | Second device (system monitor), both devices at once | 1 | ☐ not done |
 | M6 | Diarization (1–2 remote speakers) | 2 | ☐ not done |
@@ -360,7 +362,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4) | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |

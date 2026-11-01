@@ -1,4 +1,4 @@
-"""ASR: Armenian speech -> Armenian text (DECISIONS D3, D7; M3 S4 decisions A1-A6, 2026-11-01).
+"""ASR: Armenian speech -> Armenian text (DECISIONS D3, D7; M3 S4 decisions A1-A6, S7 P9, 2026-11-01).
 
 One Asr object holds one faster-whisper model. Each call transcribes one Segment's audio,
 independently of every other segment.
@@ -11,7 +11,7 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 CPU_THREADS = 4   # A3: leave cores for capture + MT; tuned in M4 (T4)
-NUM_WORKERS = 1   # A3 / D1: N = 1; must equal N when more ASR workers share this model (M4)
+NUM_WORKERS = 1   # A3 / D1: default N = 1; must equal the pipeline's ASR worker count (P9)
 BEAM_SIZE = 5     # A2: faster-whisper default; speed tuning belongs to M4 (R1)
 
 
@@ -20,8 +20,9 @@ class AsrError(Exception):
 
 
 class Asr:
-    def __init__(self, model_dir: Path | str):
+    def __init__(self, model_dir: Path | str, num_workers: int = NUM_WORKERS):
         self.model_dir = Path(model_dir)
+        self.num_workers = num_workers  # P9: Pipeline checks it equals its n_workers (D3)
         # A6: check ourselves. A path that does not exist would be taken as a model *name*
         # and faster-whisper would try to download it (working rule 2, D15).
         if not (self.model_dir / "model.bin").is_file():
@@ -35,7 +36,7 @@ class Asr:
             device="cpu",
             compute_type="int8",
             cpu_threads=CPU_THREADS,
-            num_workers=NUM_WORKERS,
+            num_workers=self.num_workers,
         )
 
     def transcribe(self, audio: np.ndarray) -> str:

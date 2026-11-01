@@ -96,12 +96,15 @@
 #### T1.5 — `pipeline` join + order
 - **Purpose:** results are joined by segment id and printed in the right order.
 - **Linked:** D1, D13, L5.
-- **Input:** stub ASR / MT / diarizer that return results out of order.
+- **Input:** stub ASR / MT (diarizer stub added in M6) that return results out of order.
 - **Run:** `python -m pytest tests/test_pipeline.py -v`
 - **Pass:**
   - Each line joins the right segment id.
   - Lines print in order of speech end.
   - Mic segments are always "Me".
+  - A segment with empty ASR text prints no line, and later lines still print.
+  - Latency = print time − `end_wall`.
+  - A worker error or a worker-count mismatch makes the pipeline fail loudly.
 - **Status:** not run
 
 #### T1.6 — `diarizer` (M6)

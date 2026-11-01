@@ -385,7 +385,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 - **L2 Overlapping speech:** no special handling; text or speaker label may be wrong when people talk at the same time.
 - **L3 Code-switching:** Russian/English words inside Armenian speech are processed as-is; models may get them wrong.
 - **L4 Segment cap 12 s:** long speech without pauses is cut at 12 s, possibly mid-word.
-- **L5 Print order by speech end:** example — Speaker 1 talks 00:10–00:25, Me says something short 00:15–00:17 → the `[00:00:15] Me` line prints *before* `[00:00:10] Speaker 1`, so timestamps appear out of order.
+- **L5 Print order by speech end:** example — Speaker 1 talks 00:10–00:25, Me says something short 00:15–00:17 → the `[00:00:15] Me` line prints *before* `[00:00:10] Speaker 1`, so timestamps appear out of order. Also (agreed 2026-11-01, M3 S7, P3): lines print in the order segments were submitted, i.e. when each segment's end was detected. A segment cut at the 12 s cap is submitted at once, one that ends in silence 0.6 s later, so with two devices (M5 on) two segments that end within 0.6 s of each other can print swapped.
 - **L6 Mic is always "Me":** even if another person speaks into the mic.
 - **L7 Final lines only:** no partial text while someone is speaking.
 - **L8 Remote speakers:** diarization is tuned and tested for 1–2 remote speakers first.

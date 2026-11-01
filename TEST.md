@@ -36,7 +36,7 @@
 | T1.1 | Unit: `audio_capture` + VAD (file input) | M3 | passed |
 | T1.2 | Unit: `asr` | M3 | passed |
 | T1.3 | Unit: `translate` | M3 | passed |
-| T1.4 | Unit: `output` line format | M3 | not run |
+| T1.4 | Unit: `output` line format | M3 | passed |
 | T1.5 | Unit: `pipeline` join + order | M3 | not run |
 | T1.6 | Unit: `diarizer` | M6 | not run |
 | T2 | End-to-end latency, file mode | M4 (re-run M5) | not run |
@@ -91,7 +91,7 @@
   - A fixed record gives exactly the line format in DECISIONS section 8.
   - Offset 83 s → `[00:01:23]`.
   - Latency 5.1 s → warning shown; 4.9 s → no warning.
-- **Status:** not run
+- **Status:** passed (2026-11-01, see results log)
 
 #### T1.5 — `pipeline` join + order
 - **Purpose:** results are joined by segment id and printed in the right order.
@@ -183,3 +183,4 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-10-31 | T1.1 | 83c9def | file input fed with `realtime=False` (V6); plain `python -m pytest -v` run | 3/3 T1.1 tests passed (speech, silence, 12 s cut); whole default suite 6 passed in 0.34 s | passed | `command_outputs/m3_s3_pytest.txt` |
 | 2026-11-01 | T1.2 | 6720d83 | plain `python -m pytest -v -s` run | 2/2 T1.2 tests passed (Armenian text 100 % Armenian letters; missing model → clear error); whole default suite 8 passed in 5.19 s | passed | `command_outputs/m3_s4_pytest.txt`, `command_outputs/m3_s4b_pytest.txt` |
 | 2026-11-01 | T1.3 | ff6cef1 | plain `python -m pytest -v -s` run; `no_repeat_ngram_size=3` (D5 C1) | 1/1 T1.3 test passed (3 FLEURS sentences: non-empty English, no Armenian letters, length ≤ 2× Armenian); whole default suite 9 passed in 6.07 s | passed | `command_outputs/m3_s5b_pytest.txt`; first run without the fix looped on sentence 2 (`m3_s5_pytest.txt`, `m3_s5_diag_mt.txt`) |
+| 2026-11-01 | T1.4 | 6cf8810 | plain `python -m pytest -v -s` run | 4/4 T1.4 tests passed (exact section 8 format; 83 s → `[00:01:23]`, 83.9 s truncated; 5.1 s → warning; 4.9 s → none); whole default suite 13 passed in 6.09 s | passed | `command_outputs/m3_s6_pytest.txt` |

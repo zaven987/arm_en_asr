@@ -59,7 +59,7 @@
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** latency fix: `scripts/diag_asr.py` measurements (see `handovers/008-m3-done-to-latency-fix.md`).
+- **Next step:** latency fix, option B (D26): diag_asr.py run with shorter segment caps.
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -104,6 +104,7 @@ Corrections to PLAN.md:
 ## 6. Future ideas (not to be built unless Zaven moves them into scope)
 
 - Partial / streaming text while a person is still speaking (now: final lines only).
+- NVIDIA Armenian FastConformer CTC as the ASR model (D25): cannot loop, and its cost does not grow with the number of tokens. Set aside for time on 2026-11-01.
 
 ---
 
@@ -337,7 +338,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Addition (agreed 2026-10-29): SHA-256 of `silero_vad.onnx` v6.2.1 (2 327 524 bytes): `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`.
 - Alternatives: the `silero-vad` pip package (rejected: requires torch); the copy bundled in faster-whisper (rejected: ties VAD to the ASR library).
 
-**D25 — Latency fix: bring NVIDIA Armenian FastConformer (CTC) forward from M7 as the ASR model.** (Zaven, 2026-11-01)
+**D25 — Latency fix: bring NVIDIA Armenian FastConformer (CTC) forward from M7 as the ASR model.** (Zaven, 2026-11-01) (superseded by D26, 2026-11-01)
 - What: `stt_hy_fastconformer_hybrid_large_pc` (D4) is brought forward from the M7 bake-off to now, to fix latency (R1). We use its **CTC head with greedy decoding**, not its Transducer head. Export to ONNX in `.venv-convert`, run with onnxruntime (D4, D23 pattern); the exact export steps are agreed before any work starts. Until it is measured and agreed, the app keeps Whisper small as it is (D3, `temperature=0`); there is no runtime fallback between the two models (working rule 2).
 - Why: settings alone cannot bring Whisper small under 5 s without losing text. Measured with `scripts/diag_asr.py` (`command_outputs/latency_diag_asr.txt`, `latency_diag_asr_f.txt`; 3 mic clips, 21 segments):
   - Whisper's encoder costs ≈ 1.9 s per segment whatever its length (it always processes a 30 s window), and each output token costs another ≈ 17 ms (greedy) to ≈ 37 ms (beam 5). Armenian speech needs ≈ 15.8 Whisper tokens per second, so a full 12 s segment is ≈ 190 tokens ≈ 5.5 s of ASR alone, even with greedy decoding.
@@ -347,6 +348,13 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Note: this holds for the **CTC head only**. The model's Transducer head (FLEURS WER 12.3 % vs CTC 13.2 %) predicts each label from the previous ones, so its cost does grow with the output; it is not used.
 - Not yet known (measured after the export): speed on this CPU, RAM, and accuracy on our clips (CER on `mic_01`–`03`, same clean-up as `diag_asr.py`). The model outputs punctuation and capitals; the reference CSVs have them too (D18).
 - Alternatives (from the `latency_diag_asr_f.txt` results): (A) keep Whisper with g+b+c (rejected: drops roughly the last quarter of long segments without any sign, CER ≈ 49 %); (B) Whisper g+b with a shorter VAD cap, e.g. 7 s (not chosen: more mid-word cuts, L4, and the 1.9 s encoder floor stays); (D) Whisper g alone (rejected: max ASR 9.3 s breaks 5 s).
+- Addition (Zaven, 2026-11-01): superseded before any work started: not enough time left in the budget. Option B chosen instead (D26). FastConformer CTC moved to Future ideas (section 6); the reasons above stay as the record for that idea.
+
+**D26 — Latency fix: Whisper small, faster settings + shorter segments (option B).** (Zaven, 2026-11-01)
+- What: transcribe with `without_timestamps=True`, `beam_size=1`, `temperature=0`, and a token cap that only stops loops (it must never cut normal speech); the VAD segment cap (D8) is shortened from 12 s. The exact cap values are chosen from one more `diag_asr.py` run and agreed before `asr.py` / `audio_capture.py` change.
+- Why: `latency_diag_asr_f.txt`: a full 12 s segment needs ≈ 5.5 s of ASR even with greedy decoding (≈ 1.9 s encoder + ≈ 190 tokens × 17 ms); shorter segments mean fewer tokens per call.
+- Trade-offs: more segments cut mid-word (L4; this was M8 work, now pulled forward); greedy decoding has a worse CER than beam 5 (g+b vs g); the 1.9 s encoder cost per segment stays.
+- Alternatives: see D25.
 
 ---
 
@@ -375,7 +383,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). diag_asr finding (2026-11-01): Whisper small cannot transcribe a full 12 s Armenian segment in ≤ 5 s on this CPU without losing text; FastConformer CTC brought forward (D25). | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |

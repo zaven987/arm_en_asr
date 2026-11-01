@@ -34,7 +34,7 @@
 | ID | Name | Milestone | Status |
 |---|---|---|---|
 | T1.1 | Unit: `audio_capture` + VAD (file input) | M3 | passed |
-| T1.2 | Unit: `asr` | M3 | not run |
+| T1.2 | Unit: `asr` | M3 | passed |
 | T1.3 | Unit: `translate` | M3 | not run |
 | T1.4 | Unit: `output` line format | M3 | not run |
 | T1.5 | Unit: `pipeline` join + order | M3 | not run |
@@ -67,8 +67,10 @@
 - **Linked:** D3, R5.
 - **Input:** speech fixture.
 - **Run:** `python -m pytest tests/test_asr.py -v`
-- **Pass:** non-empty text, and at least 50 % of its letters are Armenian script.
-- **Status:** not run
+- **Pass:**
+  - Speech fixture → non-empty text, and at least 50 % of its letters are Armenian script.
+  - `Asr` pointed at an empty folder → fails with a clear "model missing" error; no download attempted (A6, D15).
+- **Status:** passed (2026-11-01, see results log)
 
 #### T1.3 — `translate`
 - **Purpose:** MT runs and returns English.
@@ -177,3 +179,4 @@ Rows are only ever appended, never edited. One row per run.
 |---|---|---|---|---|---|---|
 | — | — | — | — | — | — | — |
 | 2026-10-31 | T1.1 | 83c9def | file input fed with `realtime=False` (V6); plain `python -m pytest -v` run | 3/3 T1.1 tests passed (speech, silence, 12 s cut); whole default suite 6 passed in 0.34 s | passed | `command_outputs/m3_s3_pytest.txt` |
+| 2026-11-01 | T1.2 | 6720d83 | plain `python -m pytest -v -s` run | 2/2 T1.2 tests passed (Armenian text 100 % Armenian letters; missing model → clear error); whole default suite 8 passed in 5.19 s | passed | `command_outputs/m3_s4_pytest.txt`, `command_outputs/m3_s4b_pytest.txt` |

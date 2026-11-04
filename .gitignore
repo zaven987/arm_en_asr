@@ -1,5 +1,6 @@
 .venv/
 .venv-convert/
+.venv-gpu/
 command_outputs/
 models/
 eval/fleurs/

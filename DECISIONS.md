@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-01
+- Created: 2026-10-26 · Last updated: 2026-11-04
 
 ---
 
@@ -46,7 +46,9 @@
 
 ## 3. Current status
 
-- **Current milestone:** M5 — Second device (system monitor), then M6 diarization. M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
+- **Current milestone:** M5 — second device, then M6 diarizer (Zaven, 2026-11-04). M10: README done (2026-11-01); final test run and TEST.md statuses after M6. M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
+- **M5 + M6 plan agreed (2026-11-04):** steps S1–S7 and their rules in D27.
+- **README done (2026-11-01):** `README.md` written and committed (`496adf4`).
 - **Latency fix done (2026-11-01):** D26 (Whisper greedy, no timestamps, token cap with ` ...`, VAD cap 7 s); T2 on mic_01 passed: max 4.8 s (`command_outputs/d26_t2_mic01.txt`).
 - **M3 started (2026-10-31):** plan S1–S8 agreed (handover 005). S1 done: `app.py` CLI, device and model checks, `pytest.ini`, T6 part 1 (3 tests pass; `command_outputs/m3_s1_pytest.txt`). sacremoses closed: not used at runtime (opus-mt runs with ctranslate2 + sentencepiece).
 - **S2 done:** fixtures committed (ids 1817, 1699). **S3 done:** audio_capture + T1.1 (passed; `command_outputs/m3_s3_pytest.txt`).
@@ -60,7 +62,7 @@
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M5 — second device (see `handovers/009-latency-fix-done-to-m5.md`); then M6 diarizer. T3 / T4 later (Zaven, 2026-11-01).
+- **Next step:** M5 S1 — pipeline accepts system segments when it has a diarizer (D27; see `handovers/010-readme-done-to-m5-m6.md`). T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -241,6 +243,7 @@ python app.py --mic-wav a.wav [--system-wav b.wav]     # file mode, tests only
 - Addition (agreed 2026-10-31): until M5, `--system` / `--system-wav` are checked (device name / file exists) and then refused with a clear error, never silently ignored (working rule 2).
 - Addition (agreed 2026-10-31), replacing "from M5 on both are required" above: at least one of `--mic` / `--system` is given; either may be left out. The same applies to `--mic-wav` / `--system-wav`.
 - Addition (agreed 2026-11-01, M3 S8, Q1–Q9): startup order: checks → models → pipeline → capture → stdin reader; the session clock starts at the first captured sample. Transcript lines go to stdout, all other messages to stderr (`loading models…`, `listening on …` / `playing …`, `stopped`). `quit` → exit 0; any other non-blank text → `unknown command: '<text>'`, keeps running; blank lines are ignored; end of stdin stops command reading only. File mode ends by itself with exit 0 once every line is printed. A lost device or a pipeline error drains what was captured, then exits 1 with `ERROR: …`. Ctrl+C = the same clean shutdown, exit 130 (a second Ctrl+C stops at once). `parec` runs in its own session, so Ctrl+C reaches only the app, which stops `parec` itself.
+- Addition (Zaven, 2026-11-04, D27 E1–E3): with two devices, the session clock starts just before the capture threads start (replacing "at the first captured sample" above), file mode ends when every input has ended, and losing either device ends the whole session with exit 1.
 
 **D12 — Output line shows speaker, start offset (HH:MM:SS), Armenian, English, and measured latency** (format in section 8).
 - Latency = time the line is printed − time the speech segment ended.
@@ -329,6 +332,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Why: tests run from a fresh clone; skipping would be a silent fallback (working rule 2).
 - Alternatives: gitignored fixtures like `eval/clips/` (rejected: tests could not run from a fresh clone).
 - Addition (agreed 2026-10-31): fixtures are generated by `scripts/make_fixtures.py`: `speech_short.wav` (shortest subset clip, whole), `silence_5s.wav` (zeros), `speech_long.wav` (first subset clip with an unbroken Silero speech run ≥ 13 s, whole); the script writes `tests/fixtures/README.md` (attribution, ids, SHA-256).
+- Addition (Zaven, 2026-11-04): new pytest marker **`eval`** for tests that need the gitignored eval clips in `eval/clips/` (first case: T1.6). Excluded from a plain `pytest` run, like `hardware` and `slow`. A missing clip makes the test **fail** with a clear error, never skip. Why: those clips cannot be in a fresh clone, so the default suite stays runnable from one.
 
 **D23 — Model conversion happens in a separate, one-time environment.** (agreed 2026-10-29)
 - What: opus-mt-hy-en is converted to CTranslate2 int8 in `.venv-convert` from a pinned `requirements-convert.txt` (CPU-only torch + transformers).
@@ -361,6 +365,27 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Alternatives: see D25.
 - Addition (Zaven, 2026-11-01): values chosen from `command_outputs/latency_diag_asr_segcap.txt` (g+b+c on mic_01–03, segment caps 6 / 7 / 8 s): **VAD segment cap 7 s** (D8). At 7 s: max ASR 4.7 s per segment (6 s: 4.4 s; 8 s: 5.1 s), CER 59.0 / 45.8 / 36.1 % (6 s: 68.5 / 45.6 / 53.5 %; 8 s: 68.4 / 52.2 / 62.9 %). Token cap: allowed tokens = ceil(15.8 tok/s × segment length × 1.5), at most 220, passed as `max_new_tokens` = 2 × that, because CTranslate2 generates at most half of `max_length` (prompt + `max_new_tokens`); this rule fits every measured value (`diag_asr.py` H1). Known cost: 13 of 31 segments hit the cap at 7 s (mostly greedy over-generation such as «եմ եմ եմ …»); their text stops at the cap and what came before is printed. CER is worse than Whisper beam 5 at 12 s (32.5 / 19.5 / 34.5 %), which broke 5 s.
 - Addition (Zaven, 2026-11-01): a segment whose text was stopped by the token cap is shown with ` ...` at the end of its Armenian text, so the cut is visible, never silent (working rule 2, L11). Code: `asr.py` (`token_cap`, `CUT_MARKER`); T1.2 tests `token_cap`.
+
+**D27 — M5 + M6 plan: second device, then diarizer.** (Zaven, 2026-11-04)
+- Steps (each reviewed and committed on its own):
+  - **S1** `pipeline.py`: optional `diarizer`; system segments accepted only when there is one; T1.5 updated.
+  - **S2** `scripts/diag_two_devices.py`: `mic_01` + `sys_01` at the same time, real time, real Segmenters / Pipeline / ASR / MT, stub diarizer. Variants: N = 1 / `cpu_threads` 4, N = 2 / 4, N = 2 / 2. Records latency (median / p95 / max, lines > 5 s), peak RSS, swap. Demo conditions, Meet/Zoom tab confirmed. Output `command_outputs/m5_s2_two_devices.txt`. Zaven then chooses N and threads (new D#).
+  - **S3** `app.py` + `audio_capture.py`: one VAD, one Segmenter and one capture thread per device (`capture-mic`, `capture-system`), shared id counter; rules E1–E3 below. `--system` still refused (E4).
+  - **S4** embedding model choice (see M6 below).
+  - **S5** `diarizer.py` + T1.6 (`eval` marker, D22).
+  - **S6** app passes the real diarizer; the `--system` refusal is removed; T6 still passes, plus one test that a short `--system-wav` run is accepted and exits 0.
+  - **S7** T2 re-run `app.py --mic-wav eval/clips/mic_01.wav --system-wav eval/clips/sys_01.wav`, demo conditions; then statuses, DECISIONS / TEST updates and the README sections listed in handover 010.
+- **E1 Session clock with two devices** (changes D11 Q1 "the session clock starts at the first captured sample"): one shared start time is taken just before the capture threads start. Each Segmenter adds its own offset = arrival of its first chunk − one window (32 ms) − start time; `start` / `end` stay counted by samples (D12) plus that offset. Why: two `parec` processes (or two WAV threads) do not start at the same instant. Caveat: `parec` buffering enters the offset, so it is approximate (tens of ms); the display truncates to whole seconds.
+- **E2 File mode with WAVs of different length:** the session ends when **every** input has ended and every line is printed (exit 0); the shorter file's capture thread just finishes first.
+- **E3 Lost device:** one device lost → the whole session ends: what was captured is drained, then exit 1 with `ERROR: …` (as D11).
+- **E4 No mislabelled lines** (working rule 2): `Pipeline` takes an optional `diarizer`; a system segment submitted without one is refused loudly (`PipelineError`). The app keeps refusing `--system` / `--system-wav` until S6 connects the real diarizer, so before that system lines appear only in test stubs and in the S2 output file.
+- **E5 Latency with two devices:** measured in S2 before choosing N. `mic_01` + `sys_01` overlap almost all the time, a worst case that real calls (turns and pauses) do not reach. If this worst case breaks 5 s but realistic conversational audio passes, that is accepted and recorded as a known limitation (Zaven).
+- **M6 model (S4):** first candidate `sherpa-onnx` (feature extraction + ONNX inference in one package) with a small WeSpeaker / 3D-Speaker embedding model (~25–40 MB). Package via `requirements.in` → `uv pip compile` (D14); model via `scripts/download_models.py` at a pinned URL with SHA-256 (D15, D24); licence recorded for the README. **30-minute time-box on installation:** if `sherpa-onnx` causes install problems on Python 3.10, stop and use the fallback `kaldi-native-fbank` + our onnxruntime. Choosing the fallback is a decision, never a runtime fallback. Sanity check: a smoke script embeds every segment of `mic_01`–`03` and `sys_01` and prints time per embedding, RSS, and cosine similarity for same-speaker vs different-speaker pairs.
+- **M6 clustering (S5):** online; each speaker has a centroid = mean of its normalised embeddings. A segment joins the nearest speaker by cosine similarity; if the best score is below the threshold, it becomes a new "Speaker N". The diarizer runs in its own thread beside ASR (D1), on system segments only, in submit order (clustering depends on order).
+  - **Threshold** tuned on `mic_01`–`03` only (three different readers give same- and different-speaker pairs); `sys_01` is used for testing only, so it is not tuned on (R13).
+  - **Short segments** (below a speech length set in S4, about 1 s; R11): assigned to the nearest *existing* speaker; they never create a new speaker and never update a centroid. If no speaker exists yet, the segment becomes Speaker 1.
+  - **T1.6 scoring:** each segment gets the reference speaker (`eval/meta/sys_01.csv`) it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately.
+- Time: Zaven, 2026-11-04: time is not the constraint for M5 / M6.
 
 ---
 

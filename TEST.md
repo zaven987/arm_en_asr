@@ -2,7 +2,7 @@
 
 > **How to use this file.** Every test entry, every pass criterion and every status change is agreed with Zaven **before** it is written here (working rule 10). Zaven runs all tests on his laptop; when Claude needs the output, Zaven saves it to `command_outputs/<name>.txt` and sends the path (rules 8–9). Decisions referenced as D# are in `DECISIONS.md`.
 
-- Created: 2026-10-29 · Last updated: 2026-11-01
+- Created: 2026-10-29 · Last updated: 2026-11-04
 
 ---
 
@@ -15,10 +15,12 @@
   - one file: `python -m pytest tests/test_asr.py -v`
   - hardware tests: `python -m pytest -m hardware -v`
   - load test: `python -m pytest -m slow -v`
+  - eval-clip tests: `python -m pytest -m eval -v`
 - **Markers:**
   - `hardware`: needs real PulseAudio devices and a person present.
   - `slow`: the load test.
-  - A plain `pytest` run excludes both (configured in pytest settings).
+  - `eval` (added 2026-11-04, D22): needs the gitignored eval clips in `eval/clips/`; a missing clip makes the test fail, never skip.
+  - A plain `pytest` run excludes all three (configured in pytest settings).
 - **Fail loudly in tests too:** a missing model or fixture makes the test **fail** with a clear error. Tests are never silently skipped (working rule 2, D22).
 - **Fixtures** (D22): small committed files in `tests/fixtures/`:
   - a few seconds of FLEURS hy_am audio (CC-BY 4.0, attribution in `tests/fixtures/README.md`)
@@ -112,10 +114,11 @@
 - **Purpose:** speaker labels stay stable.
 - **Linked:** D9, D17, R11.
 - **Input:** a solo mic clip; a 2-speaker system clip (eval data).
-- **Run:** `python -m pytest tests/test_diarizer.py -v`
+- **Run:** `python -m pytest -m eval tests/test_diarizer.py -v` (marker `eval`, added 2026-11-04)
 - **Pass:**
   - Solo mic clip fed through the diarizer → 100 % of segments get the same speaker number.
   - 2-speaker system clip → % correct is reported, with no threshold.
+- **Scoring** (agreed 2026-11-04, D27): each segment gets the reference speaker in `eval/meta/sys_01.csv` it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately. The threshold is tuned on `mic_01`–`03` only, never on `sys_01` (R13).
 - **Status:** not run
 
 ### T2 — End-to-end latency, file mode

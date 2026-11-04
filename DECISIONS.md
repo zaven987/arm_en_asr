@@ -282,6 +282,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   make_fixtures.py (D22; added 2026-10-31)
                           #   diag_mt.py (D5 MT loop diagnosis, runs in .venv-convert; added 2026-11-01)
                           #   diag_asr.py (latency fix: Whisper speed / loop variants, runs in .venv; added 2026-11-01)
+                          #   diag_two_devices.py (M5 S2: two devices at once, N / threads variants; added 2026-11-04)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore

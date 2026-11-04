@@ -124,12 +124,14 @@
 
 ### T2 — End-to-end latency, file mode
 - **Purpose:** prove that end of phrase → English line takes ≤ 5 s.
-- **Linked:** D11, D12, D21, R1.
-- **Milestone:** M4 (mic only); re-run in M5 with `--system-wav`.
+- **Linked:** D11, D12, D21, D27, D28, R1, L12.
+- **Milestone:** M4 (mic only); re-run in M5 (S7) with both devices on the turn-taking files.
 - **Conditions:** demo conditions.
-- **Run:** `python app.py --mic-wav <eval clip>` (M5: add `--system-wav <eval clip>`). WAVs are fed at real-time speed.
+- **Run:** `python app.py --mic-wav <eval clip>`. WAVs are fed at real-time speed.
+  - M5 (changed 2026-11-04, D27): `python app.py --mic-wav eval/clips/turns_mic.wav --system-wav eval/clips/turns_sys.wav`. The turn files are made by `python scripts/make_turns.py` from `mic_01` + `sys_01` (one side talks at a time, as in a call).
+  - The overlap case (`mic_01` + `sys_01` played together) is **not** T2: it is a recorded measurement and known limitation L12.
 - **Pass:** every printed line has latency ≤ 5 s. Record median, p95 and max in the results log.
-- **Status:** passed (2026-11-01, mic only, see results log; re-run in M5 with `--system-wav`)
+- **Status:** passed (2026-11-01, mic only, see results log; re-run in M5 S7 on the turn files)
 
 ### T3 — Capture smoke test (`hardware`)
 - **Purpose:** real devices deliver real audio.
@@ -198,3 +200,4 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-01 | T1.2 | ad8b730 | same run; D26 ASR settings (greedy, no timestamps, token cap) | 3/3 T1.2 tests passed (Armenian text; missing model → clear error; token_cap follows D26) | passed | `command_outputs/d26_pytest.txt` |
 | 2026-11-01 | T2 | ad8b730 | file mode `mic_01` (61 s, real-time feed), mic only, N = 1, D26 settings; Meet/Zoom tab open: not confirmed | 11 lines; latency median 4.1 s, p95 4.8 s, max 4.8 s; 0 lines > 5 s; swap 1051 → 1051 MB; 5/11 lines end with ` ...` (L11) | passed | `command_outputs/d26_t2_mic01.txt` |
 | 2026-11-04 | T1.5 | 2ed8403 | plain `python -m pytest -v -s` run; stub ASR / MT / diarizer, out-of-order finishing forced with Event gates | 14/14 T1.5 tests passed (the earlier checks, plus: system lines carry the diarizer label; diarizer called for system segments only; late label still prints in order; empty ASR text on a system segment → labelled, no line; system segment without a diarizer refused; unknown device refused; diarizer error or empty label fails loudly); whole default suite 30 passed in 7.32 s | passed | `command_outputs/m5_s1_pytest.txt` |
+| 2026-11-04 | — (M5 S2 measurement, not T2) | 2ed8403 + `diag_two_devices.py` | `mic_01` + `sys_01` played together (overlap, 89 s), real-time feed, stub diarizer; Zoom tab open, plugged in | 27 lines each; n1t4 (N 1, 4 threads): median 14.1 s, p95 21.0 s, max 23.0 s, 26 > 5 s, peak RSS 877 MB, swap +0 MB; n2t4: max 23.2 s, 26 > 5 s, 1059 MB, swap +183 MB; n2t2: max 18.2 s, 25 > 5 s, 1087 MB, swap +78 MB; 13/27 lines cut by the token cap | measurement | `command_outputs/m5_s2_two_devices.txt`; result: D28 (N = 1), L12 |

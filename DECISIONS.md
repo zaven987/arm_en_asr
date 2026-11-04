@@ -62,7 +62,8 @@
 - **Done in M1 (2026-10-29):** pinned environment installed and verified (`command_outputs/m1_*.txt`); `.venv-convert` built (torch 2.14.1+cpu, transformers 4.57.6); `scripts/download_models.py` run: all models in `models/` (`command_outputs/m1_download.txt`).
 - **M1 done (2026-10-30):** smoke run on FLEURS hy_am test id 2009 (14.76 s; `command_outputs/m1_smoke.txt`). All models load offline (faster-whisper works with huggingface-hub 2.3.0). VAD: 82 % of windows speech. ASR (Whisper small, int8, CPU, defaults): RTF 0.58 (8.5 s for 14.76 s), 100 % Armenian letters, CER ≈ 12 %, WER ≈ 56 % (mostly phonetic spelling errors). MT (opus-mt int8): 0.2 s per sentence; on the reference Armenian only the first half is correct. RAM: peak RSS 829 MB (VAD + ASR; the script freed Whisper before loading MT, so all models together ≈ 0.9–1.0 GB, to be measured in T4), 3.5–4.2 GB available, swap growth 0 MB. Armenian renders correctly after switching the terminal font (R15).
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
-- **Next step:** M5 S1 — pipeline accepts system segments when it has a diarizer (D27; see `handovers/010-readme-done-to-m5-m6.md`). T3 / T4 later (Zaven, 2026-11-01).
+- **M5 S1 done (2026-11-04):** pipeline accepts system segments with a diarizer; T1.5 passed (14 tests). **S2 done:** overlap measured, N = 1 kept (D28), L12 added.
+- **Next step:** turn-taking measurement (`make_turns.py` + `diag_two_devices.py`, D27 addition); pass → M5 S3, fail → decide on the token-cap loops. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -283,6 +284,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   diag_mt.py (D5 MT loop diagnosis, runs in .venv-convert; added 2026-11-01)
                           #   diag_asr.py (latency fix: Whisper speed / loop variants, runs in .venv; added 2026-11-01)
                           #   diag_two_devices.py (M5 S2: two devices at once, N / threads variants; added 2026-11-04)
+                          #   make_turns.py (M5: turn-taking WAVs turns_mic / turns_sys from mic_01 + sys_01; added 2026-11-04)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -387,6 +389,13 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **Short segments** (below a speech length set in S4, about 1 s; R11): assigned to the nearest *existing* speaker; they never create a new speaker and never update a centroid. If no speaker exists yet, the segment becomes Speaker 1.
   - **T1.6 scoring:** each segment gets the reference speaker (`eval/meta/sys_01.csv`) it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately.
 - Time: Zaven, 2026-11-04: time is not the constraint for M5 / M6.
+- Addition (Zaven, 2026-11-04, after S2): S2 result (`command_outputs/m5_s2_two_devices.txt`; Zoom tab open, plugged in): with `mic_01` + `sys_01` talking at the same time, every variant breaks 5 s (max 23.0 / 23.2 / 18.2 s for n1t4 / n2t4 / n2t2) because segments arrive faster (≈ one per 3.3 s) than the pipeline finishes them (≈ one per 3.8 s), so a queue builds up. This overlap case is recorded as a measurement and known limitation L12, **not** as T2. A realistic **turn-taking** test is added before S3: `scripts/make_turns.py` builds `eval/clips/turns_mic.wav` + `turns_sys.wav` (gitignored): turns of about 10–15 s cut at the quietest 100 ms, alternating `sys_01` / `mic_01`, 1 s silence between turns, the other track silent. It is measured now with `diag_two_devices.py --mic … --system … --variants n1t4` (new options); pass = every line ≤ 5 s. **Pass → go straight to S3. Fail → stop and decide together on reducing the token-cap loops.** S7's T2 re-run uses the turn files instead of `mic_01` + `sys_01`.
+
+**D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)
+- What: the app keeps `N_ASR_WORKERS = 1` and `CPU_THREADS = 4` (D1, D3 A1).
+- Why (M5 S2, `command_outputs/m5_s2_two_devices.txt`): N = 2 finishes the same work in about the same time (run 101 s / 94 s vs 106 s with N = 1), because both workers share the same CPU; it costs about 180–210 MB more RAM (peak RSS 1059 / 1087 MB vs 877 MB) and swap grew by 183 MB (n2t4) and 78 MB (n2t2), against 0 MB with N = 1 (T4 allows ≤ 100 MB).
+- Alternatives: N = 2 with 4 threads (rejected: no gain, swap growth over the T4 limit); N = 2 with 2 threads (rejected: max 18.2 s instead of 23.0 s on the overlap case, still far over 5 s, more RAM and swap growth).
+- The full T4 load test (D2) is still postponed; D28 is based on the S2 measurement only.
 
 ---
 
@@ -450,6 +459,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 - **L9 Demo assumption:** sized for "browser video call open + laptop plugged in"; other setups not yet verified.
 - **L10 Weak MT (opus-mt-hy-en):** the skeleton MT model is a weak point. Even on clean reference Armenian it often gives fluent English with the wrong meaning (e.g. FLEURS «Մարզընկեր ըմբիշները … Լունային» → "I think they're also paying a debt of respect"), and on some inputs (numbers like «6-6», hyphenated words) it can fall into a repetition loop («6-6-6-…-a-a-a-…»). Loop: diagnosed and guarded in M3 S5 (D5). Meaning errors: measured and compared with NLLB in the M7 bake-off.
 - **L11 Cut-off lines (` ...`):** with greedy decoding Whisper sometimes keeps repeating (e.g. «եմ եմ եմ …»). The D26 token cap stops it in time, and the Armenian line then ends with ` ...` to show the text was cut; the repeated words before the cut are still printed. On `mic_01`–`03` this happened on 13 of 31 segments. The marker also goes into MT, so the English line may or may not show it.
+- **L12 Both sides talking at once** (added 2026-11-04, D27, D28): when the mic and the call audio both carry speech for a long stretch, segments arrive faster than ASR can finish them, lines queue up and latency grows well past 5 s. Measured in M5 S2 on `mic_01` + `sys_01` played together (89 s): max 23.0 s with N = 1. A second ASR worker does not help (D28). Normal conversation, where people take turns, is the case the app is built for.
 
 ---
 

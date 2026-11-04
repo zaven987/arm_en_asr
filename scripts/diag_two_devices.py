@@ -5,6 +5,12 @@ real-time speed, through the app's real capture code, Pipeline, ASR and MT. Read
 nothing in src/ or app.py changes. Runs in .venv, under demo conditions (Meet/Zoom tab open, plugged in).
 
     python scripts/diag_two_devices.py > command_outputs/m5_s2_two_devices.txt 2>&1
+    # turn-taking files (D27 addition, 2026-11-04), current app setting only:
+    python scripts/diag_two_devices.py --mic eval/clips/turns_mic.wav --system eval/clips/turns_sys.wav \
+        --variants n1t4 > command_outputs/m5_turns_n1t4.txt 2>&1
+
+Options (added 2026-11-04): --mic / --system choose the WAVs (paths from the repo root or absolute;
+defaults mic_01 / sys_01), --variants a comma list of variant names (default: all three).
 
 K1  three variants, one after another, each in its own child process (clean RAM figures):
       n1t4 = N 1, cpu_threads 4 (current app setting)   n2t4 = N 2, cpu_threads 4   n2t2 = N 2, cpu_threads 2
@@ -78,7 +84,7 @@ class StubDiarizer:
 
 # ---------------------------------------------------------------- child: one variant
 
-def run_variant(name: str) -> int:
+def run_variant(name: str, clips: dict[str, Path]) -> int:
     import psutil
 
     import arm_en_asr.asr as asr_module
@@ -109,7 +115,7 @@ def run_variant(name: str) -> int:
     mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
     ids = new_id_counter()
     sources, segmenters = {}, {}
-    for device, path in CLIPS.items():
+    for device, path in clips.items():
         sources[device] = WavSource(path, realtime=True)
         segmenters[device] = Segmenter(device, SileroVad(MODELS_DIR / "silero_vad.onnx"), ids)
     load_s = time.monotonic() - t_load
@@ -141,7 +147,7 @@ def run_variant(name: str) -> int:
             errors.append(e)
 
     threads = [threading.Thread(target=capture, args=(d,), name=f"capture-{d}", daemon=True)
-               for d in CLIPS]
+               for d in clips]
     t_run = time.monotonic()
     for t in threads:
         t.start()
@@ -190,8 +196,8 @@ def run_variant(name: str) -> int:
 
 # ---------------------------------------------------------------- parent: all variants
 
-def check_inputs() -> None:
-    missing = [str(p) for p in CLIPS.values() if not p.is_file()]
+def check_inputs(clips: dict[str, Path]) -> None:
+    missing = [str(p) for p in clips.values() if not p.is_file()]
     for p in (MODELS_DIR / "silero_vad.onnx", MODELS_DIR / "faster-whisper-small" / "model.bin",
               MODELS_DIR / "opus-mt-hy-en-ct2-int8" / "model.bin"):
         if not p.is_file():
@@ -200,19 +206,20 @@ def check_inputs() -> None:
         raise DiagError("missing files:\n" + "\n".join(f"  - {m}" for m in missing))
 
 
-def run_all() -> int:
-    check_inputs()
+def run_all(clips: dict[str, Path], variants: list[str]) -> int:
+    check_inputs(clips)
     load1, load5, load15 = os.getloadavg()
     print(f"diag_two_devices.py  start {datetime.now().isoformat(timespec='seconds')}  "
           f"CPUs {os.cpu_count()}  load average {load1:.2f} {load5:.2f} {load15:.2f}")
-    print(f"mic = {CLIPS['mic'].relative_to(ROOT)}, system = {CLIPS['system'].relative_to(ROOT)}, "
+    print(f"mic = {clips['mic']}, system = {clips['system']}, variants = {','.join(variants)}, "
           f"real-time feed; system label = {STUB_LABEL!r} (stub, K4)")
     print("conditions (Meet/Zoom tab, power): reported by Zaven, not detected\n", flush=True)
 
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     summaries = []
-    for name in VARIANTS:
-        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--variant", name],
+    for name in variants:
+        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--variant", name,
+                                  "--mic", str(clips["mic"]), "--system", str(clips["system"])],
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  text=True, encoding="utf-8", env=env, cwd=ROOT)
         summary = None
@@ -241,9 +248,18 @@ def run_all() -> int:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--variant", choices=list(VARIANTS), help="internal: run one variant (child process)")
+    p.add_argument("--mic", default=str(CLIPS["mic"]), help="WAV fed as the mic (default mic_01)")
+    p.add_argument("--system", default=str(CLIPS["system"]), help="WAV fed as system audio (default sys_01)")
+    p.add_argument("--variants", default=",".join(VARIANTS),
+                   help=f"comma list from {','.join(VARIANTS)} (default: all)")
     args = p.parse_args()
+    clips = {"mic": (ROOT / args.mic).resolve(), "system": (ROOT / args.system).resolve()}
+    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    unknown = [v for v in variants if v not in VARIANTS]
+    if unknown or not variants:
+        p.error(f"unknown or empty --variants {unknown or args.variants!r}; choose from {','.join(VARIANTS)}")
     try:
-        code = run_variant(args.variant) if args.variant else run_all()
+        code = run_variant(args.variant, clips) if args.variant else run_all(clips, variants)
     except DiagError as e:
         print(f"ERROR: {e}", file=sys.stderr, flush=True)
         code = 1

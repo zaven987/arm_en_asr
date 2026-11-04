@@ -413,6 +413,7 @@ requirements-gpu.in  requirements-gpu.txt   # added 2026-11-05 (D29 G1; .venv-gp
 - No time-box (Zaven, 2026-11-05); the three-strikes rule applies.
 - Alternatives: Option 1, shorter segments (more mid-word cuts, L4, and possibly worse CER); Option 3, accept the misses (breaks the only hard rule).
 - Addition (Zaven, 2026-11-05): G0 done: ctranslate2 4.8.4 sees 1 CUDA device; supported `int8_float16`, `float16`, `int8`, `int8_float32`, `float32`; VRAM 5 / 2048 MiB in use (`command_outputs/m5_gpu_check.txt`).
+- Addition (Zaven, 2026-11-05): G2 result (`command_outputs/m5_g2_diag_asr_gpu.txt`, `m5_g2_diag_asr_cpu.txt`; same session, `.venv-gpu`, mic_01–03, 7 s cap, g+b+c+d1). GPU `int8_float16`: total ASR 22.8 s, max 1.0 s per segment, encoder 0.35 s, loops 3/31, CER 45.0 / 26.7 / 31.9 %, RSS 715 MB, VRAM 420 MB. GPU `float16`: 61.4 s, max 2.6 s, encoder 0.98 s, loops 5/31, CER 49.7 / 38.1 / 34.9 %, VRAM 708 MB. CPU `int8`: 113.2 s, max 4.7 s, encoder 2.0–2.3 s, loops 3/31, CER 46.7 / 24.8 / 31.1 %, RSS 652 MB. Swap +0 MB in all three. **`int8_float16` is used for G3**; `float16` rejected (slower, more loops, worse CER, more VRAM).
 
 ---
 

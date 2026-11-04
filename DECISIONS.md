@@ -64,7 +64,7 @@
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
 - **M5 S1 done (2026-11-04):** pipeline accepts system segments with a diarizer; T1.5 passed (14 tests). **S2 done:** overlap measured, N = 1 kept (D28), L12 added.
 - **Turn-taking measurement (2026-11-04): not passed** (max 6.7 s, 5/28 lines > 5 s, mostly token-cap loops). Fix agreed: `repetition_penalty=1.1` + ASR warm-up (D26 additions).
-- **Next step:** re-run the turn-taking measurement with the fix; pass → M5 S3, fail → decide again. T3 / T4 later (Zaven, 2026-11-01).
+- **Next step:** Option 2 (D29): G0 GPU check, then G1 `.venv-gpu`. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -400,6 +400,18 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Alternatives: N = 2 with 4 threads (rejected: no gain, swap growth over the T4 limit); N = 2 with 2 threads (rejected: max 18.2 s instead of 23.0 s on the overlap case, still far over 5 s, more RAM and swap growth).
 - The full T4 load test (D2) is still postponed; D28 is based on the S2 measurement only.
 
+**D29 — Latency fix for M5: Whisper small on the MX550 GPU (Option 2, M7 GPU work brought forward).** (Zaven, 2026-11-05)
+- Why: the turn-taking re-run with repetition_penalty 1.1 + warm-up still had 3/28 lines at 5.1–5.9 s, all dense mic segments, no backlog (`command_outputs/m5_turns_n1t4_rp.txt`).
+- Steps, measuring before any app change:
+  - **G0** check `ctranslate2` sees the GPU.
+  - **G1** separate measuring env `.venv-gpu` from `requirements-gpu.in` (= `requirements.txt` + `nvidia-cublas-cu12` + `nvidia-cudnn-cu12==9.*`), `LD_LIBRARY_PATH` set before Python starts; `.venv` unchanged.
+  - **G2** `diag_asr.py --device / --compute-type` (default CPU int8), app settings g+b+c+d1, 7 s cap, mic_01–03, `int8_float16` and `float16`: ASR time, CER, loops, RSS, VRAM.
+  - **G3** `diag_two_devices.py --asr-device`, turn test in demo conditions, pass = every line ≤ 5 s and swap growth ≤ 100 MB.
+  - **G4** new D# on device choice and library loading, then M5 S3.
+- No runtime fallback between GPU and CPU (D7, working rule 2).
+- No time-box (Zaven, 2026-11-05); the three-strikes rule applies.
+- Alternatives: Option 1, shorter segments (more mid-word cuts, L4, and possibly worse CER); Option 3, accept the misses (breaks the only hard rule).
+
 ---
 
 ## 10. Milestones (20 h total)
@@ -444,7 +456,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 | R15 | Armenian script renders badly in terminal | Checked in M1: text is correct UTF-8; overlap came from Ubuntu Mono lacking Armenian letters. Fix: terminal font DejaVu Sans Mono (setup note in README, M10) | accepted |
 | R16 | Scope creep | Working rule 1; Future ideas section | accepted |
 | R17 | RAM: only ~2.4 GB free, swap already used → swapping breaks 5 s | Load test (D2); RAM check in M1; close unneeded apps before demo; light MT first (D5) | accepted |
-| R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h | accepted |
+| R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h. GPU work brought forward to M5 (D29); the 1 h time-box is lifted (Zaven, 2026-11-05) | accepted |
 | R19 | 20 h budget overrun | Hours per milestone; Zaven decides cuts; cut order M9 → M8 | accepted |
 
 ---

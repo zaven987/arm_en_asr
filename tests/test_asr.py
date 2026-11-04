@@ -3,6 +3,7 @@
 Sanity check, not a quality bar: non-empty text, >= 50 % Armenian-script letters (D20).
 Also: Asr pointed at an empty folder fails with a clear "model missing" error (A6).
 Also: token_cap follows D26 (no model needed).
+Also: Asr.warm_up() runs without error (D26 addition, W4, 2026-11-04).
 A missing fixture or model makes the test fail, never skip (D22).
 """
 from __future__ import annotations
@@ -54,3 +55,8 @@ def test_token_cap_follows_d26():
     assert token_cap(4.5) == 107
     assert token_cap(7.0) == 166
     assert token_cap(20.0) == 220
+
+
+def test_warm_up_runs():
+    """W4: warm_up() transcribes silence once and returns nothing."""
+    assert Asr(WHISPER).warm_up() is None

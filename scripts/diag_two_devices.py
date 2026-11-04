@@ -112,6 +112,7 @@ def run_variant(name: str, clips: dict[str, Path]) -> int:
     t_load = time.monotonic()
     asr_module.CPU_THREADS = cpu_threads           # K3: this process only
     asr = asr_module.Asr(MODELS_DIR / "faster-whisper-small", num_workers=n_workers)
+    asr.warm_up()                                  # W3: same startup as the app (W2)
     mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
     ids = new_id_counter()
     sources, segmenters = {}, {}

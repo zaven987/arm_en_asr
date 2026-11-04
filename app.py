@@ -183,6 +183,7 @@ def run_session(args: argparse.Namespace) -> int:
         info("loading models…")
         vad = SileroVad(MODELS_DIR / "silero_vad.onnx")
         asr = Asr(MODELS_DIR / "faster-whisper-small", num_workers=N_ASR_WORKERS)
+        asr.warm_up()                    # W2 (D26 addition): first real segment is not slower
         mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
         if args.mic is not None:
             source = ParecSource(args.mic)

@@ -25,6 +25,9 @@ TOKEN_CAP_MAX = 220    # Whisper's 448-token limit, halved by CTranslate2 (below
 CT2_LENGTH_FACTOR = 2  # CTranslate2 generates at most half of max_length = prompt + max_new_tokens
                        # (measured in diag_asr.py H1), so we pass 2 x the tokens we want to allow
 CUT_MARKER = " ..."    # D26 / L11: shown when the cap stopped the text
+REPETITION_PENALTY = 1.1  # D26 addition (Zaven, 2026-11-04, W1): loops 13/31 -> 3/31 and better CER
+                          # on mic_01-03 (m5_diag_asr_rp.txt); the token cap above stays as a safety net
+WARM_UP_S = 1.0        # W2: seconds of silence transcribed once at startup
 
 
 class AsrError(Exception):
@@ -56,6 +59,11 @@ class Asr:
             num_workers=self.num_workers,
         )
 
+    def warm_up(self) -> None:
+        """W2: transcribe WARM_UP_S of silence once and discard the result, so the first real
+        segment of a session does not pay the first-call cost. Called while models load."""
+        self.transcribe(np.zeros(int(WARM_UP_S * SR), dtype=np.float32))
+
     def transcribe(self, audio: np.ndarray) -> str:
         """A4: float32 mono 16 kHz audio -> Armenian text; "" if Whisper returns nothing.
         D26: if the token cap stopped the text, it ends with CUT_MARKER (L11)."""
@@ -70,6 +78,7 @@ class Asr:
             temperature=TEMPERATURE,           # single value: no fallback re-decoding
             without_timestamps=True,           # D26: one decoding pass, far fewer loops
             max_new_tokens=CT2_LENGTH_FACTOR * cap,
+            repetition_penalty=REPETITION_PENALTY,  # W1: fewer repetition loops
         )
         # `pieces` is a generator: decoding happens while it is consumed.
         pieces = list(pieces)

@@ -72,6 +72,7 @@
 - **Pass:**
   - Speech fixture → non-empty text, and at least 50 % of its letters are Armenian script.
   - `Asr` pointed at an empty folder → fails with a clear "model missing" error; no download attempted (A6, D15).
+  - `Asr.warm_up()` runs without error (D26 addition, 2026-11-04).
   - `token_cap` follows D26: 1.65 s → 40, 4.5 s → 107, 7 s → 166, 20 s → 220 tokens.
 - **Status:** passed (2026-11-01, see results log)
 

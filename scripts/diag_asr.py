@@ -22,13 +22,28 @@ G5  CER: lowercase, Armenian letters and spaces only, spaces collapsed; edit dis
 A missing model, clip or reference CSV stops the script with a clear error (working rule 2).
 H2 (D26, 2026-11-01): --seg-cap 6,7,8 repeats the run with a shorter VAD segment cap (D8). It changes
 audio_capture.CAP for this script only; audio_capture.py itself is not changed.
+J1-J6 (D29 G2, 2026-11-05): GPU option. Runs in .venv-gpu with LD_LIBRARY_PATH set to the cuBLAS /
+cuDNN / nvrtc lib folders before Python starts (D29 G1):
+    python scripts/diag_asr.py eval/clips/mic_0{1,2,3}.wav --variants g+b+c+d1 --device cuda --compute-type int8_float16,float16
+J1  --device cpu|cuda (default cpu).
+J2  --compute-type: comma-separated; default int8 on cpu; required on cuda. Each one loads the model.
+J3  cuda without a CUDA device, an unsupported compute type, or variant e on cuda -> clear error.
+J4  memory after load + warm-up and after each variant: current RSS, peak RSS so far in this process
+    (getrusage; it never goes down, so a later compute type also shows earlier peaks), swap used,
+    and on cuda this process's VRAM from nvidia-smi.
+J5  G3 encoder timing on cuda copies the encoder output to the CPU (to_cpu=True), so it includes a
+    small copy; the cpu path is unchanged.
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import math
+import os
 import re
+import resource
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -48,8 +63,9 @@ VAD_PATH = MODELS_DIR / "silero_vad.onnx"
 META_DIR = ROOT / "eval" / "meta"
 RATE_CLIPS = ["mic_01", "mic_02", "mic_03"]  # G4 c: token rate from these references
 
-# Current setting, same as asr.py (D3 A1-A2 + temperature=0).
+# Current setting, same as asr.py (D3 A1-A2 + temperature=0). device / compute_type: J1, J2.
 BASE_LOAD = dict(device="cpu", compute_type="int8", cpu_threads=4, num_workers=1)
+DEVICES = ("cpu", "cuda")  # J1
 BASE_TRANSCRIBE = dict(language="hy", task="transcribe", vad_filter=False,
                        condition_on_previous_text=False, beam_size=5, temperature=0.0)
 
@@ -136,11 +152,52 @@ def cut_segments(wav: Path) -> list:
     return segments
 
 
+# ---------------------------------------------------------------- memory (J4)
+
+def rss_mb() -> float:
+    import psutil
+    return psutil.Process().memory_info().rss / 2**20
+
+
+def peak_rss_mb() -> float:
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024  # Linux: KiB
+
+
+def swap_mb() -> float:
+    import psutil
+    return psutil.swap_memory().used / 2**20
+
+
+def vram_mb() -> float | None:
+    """This process's GPU memory in MiB from nvidia-smi; None if nvidia-smi does not list it."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        fail("--device cuda: nvidia-smi not found, so VRAM cannot be measured")
+    if out.returncode != 0:
+        fail(f"nvidia-smi failed (exit {out.returncode}): {out.stderr.strip()}")
+    for line in out.stdout.splitlines():
+        parts = [x.strip() for x in line.split(",")]
+        if len(parts) == 2 and parts[0] == str(os.getpid()):
+            return float(parts[1])
+    return None
+
+
+def mem_text(device: str) -> str:
+    text = f"RSS {rss_mb():.0f} MB, peak RSS {peak_rss_mb():.0f} MB, swap {swap_mb():.0f} MB"
+    if device == "cuda":
+        v = vram_mb()
+        text += f", VRAM {v:.0f} MB" if v is not None else ", VRAM n/a (process not listed by nvidia-smi)"
+    return text
+
+
 # ---------------------------------------------------------------- model
 
-def load_model(cpu_threads: int):
+def load_model(cpu_threads: int, device: str, compute_type: str):
     from faster_whisper import WhisperModel
-    load = dict(BASE_LOAD, cpu_threads=cpu_threads)
+    load = dict(BASE_LOAD, cpu_threads=cpu_threads, device=device, compute_type=compute_type)
     t0 = time.monotonic()
     model = WhisperModel(str(WHISPER_DIR), **load)
     print(f"# loaded faster-whisper small {load} in {time.monotonic() - t0:.1f} s", flush=True)
@@ -163,13 +220,22 @@ def token_rate(model) -> float:
     return rate
 
 
-def encoder_time(model, audio: np.ndarray) -> float:
-    """G3: one encoder pass on the 30 s window, as faster-whisper pads it."""
+def encoder_time(model, audio: np.ndarray, device: str) -> float:
+    """G3: one encoder pass on the 30 s window, as faster-whisper pads it.
+    J5: on cuda the output is copied to the CPU, which also waits for the GPU to finish."""
     features = model.feature_extractor(audio)
     n_frames = model.feature_extractor.nb_max_frames
     features = features[:, :n_frames]
     if features.shape[1] < n_frames:
         features = np.pad(features, ((0, 0), (0, n_frames - features.shape[1])))
+    if device == "cuda":
+        # WhisperModel.encode has no to_cpu argument (faster-whisper 1.2.1), so call the
+        # CTranslate2 encoder the same way it does, but with to_cpu=True.
+        from faster_whisper.transcribe import get_ctranslate2_storage
+        storage = get_ctranslate2_storage(np.expand_dims(features, 0))
+        t0 = time.monotonic()
+        model.model.encode(storage, to_cpu=True)
+        return time.monotonic() - t0
     t0 = time.monotonic()
     out = model.encode(features)
     np.asarray(out)  # make sure the result is materialised before stopping the clock
@@ -225,10 +291,11 @@ def load_clips(paths: list[Path]) -> list:
     return clips
 
 
-def run_one(model, rate, clips, seg_cap: float, name: str, load_kw: dict, trans_kw: dict) -> str:
+def run_one(model, rate, clips, seg_cap: float, name: str, load_kw: dict, trans_kw: dict,
+            device: str, compute_type: str) -> str:
     """One variant on all clips at one segment cap; returns the summary line."""
-    print(f"\n=== segment cap {seg_cap:g} s, variant {name}: load {load_kw or '-'}, "
-          f"transcribe {trans_kw or '-'}")
+    print(f"\n=== segment cap {seg_cap:g} s, {device} {compute_type}, variant {name}: "
+          f"load {load_kw or '-'}, transcribe {trans_kw or '-'}")
     print(f"{'clip':7} {'seg':>3} {'len_s':>6} {'asr_s':>6} {'tokens':>6} {'cap':>4} "
           f"{'passes':>6} {'compr':>6} {'logprob':>7} {'loop':>4}  text (first 60 chars)")
     times, loops, cers = [], 0, []
@@ -253,9 +320,10 @@ def run_one(model, rate, clips, seg_cap: float, name: str, load_kw: dict, trans_
         c = cer(" ".join(hyps), ref_text)
         cers.append((wav.stem, c))
         print(f"{wav.stem}: CER {100 * c:.1f} %", flush=True)
-    line = (f"cap {seg_cap:4g} s  variant {name:12} total ASR {sum(times):6.1f} s  "
-            f"max {max(times):5.1f} s  loops {loops}/{len(times)}  CER "
-            + ", ".join(f"{k} {100 * v:.1f} %" for k, v in cers))
+    line = (f"cap {seg_cap:4g} s  {device} {compute_type:12} variant {name:12} "
+            f"total ASR {sum(times):6.1f} s  max {max(times):5.1f} s  loops {loops}/{len(times)}  CER "
+            + ", ".join(f"{k} {100 * v:.1f} %" for k, v in cers)
+            + f"  | {mem_text(device)}")  # J4
     print(line, flush=True)
     return line
 
@@ -267,9 +335,36 @@ def main() -> None:
                     help=f"comma-separated; x+y combines (default {DEFAULT_VARIANTS})")
     ap.add_argument("--seg-cap", default=f"{audio_capture.CAP_S:g}",
                     help="comma-separated VAD segment caps in seconds, 1-12 (default: the app's D8 cap)")
+    ap.add_argument("--device", default="cpu", choices=DEVICES, help="J1: default cpu")
+    ap.add_argument("--compute-type", default=None,
+                    help="J2: comma-separated CTranslate2 compute types; default int8 on cpu, "
+                         "required on cuda")
     args = ap.parse_args()
 
     variants = parse_variants(args.variants)
+    device = args.device
+    # J2: never pick a GPU compute type silently.
+    if args.compute_type is None:
+        if device == "cuda":
+            fail("--device cuda needs --compute-type (e.g. int8_float16,float16)")
+        compute_types = [BASE_LOAD["compute_type"]]
+    else:
+        compute_types = [c.strip() for c in args.compute_type.split(",") if c.strip()]
+        if not compute_types:
+            fail(f"--compute-type is empty: {args.compute_type!r}")
+    # J3: fail loudly before loading anything.
+    import ctranslate2
+    if device == "cuda":
+        if ctranslate2.get_cuda_device_count() == 0:
+            fail("--device cuda: ctranslate2 sees no CUDA device")
+        for name, load_kw, _trans in variants:
+            if "cpu_threads" in load_kw:
+                fail(f"variant {name!r} changes cpu_threads, which has no meaning on cuda")
+    supported = ctranslate2.get_supported_compute_types(device)
+    for ct in compute_types:
+        if ct not in supported:
+            fail(f"compute type {ct!r} not supported on {device}; supported: "
+                 + ", ".join(sorted(supported)))
     try:
         seg_caps = [float(x) for x in args.seg_cap.split(",")]
     except ValueError:
@@ -286,36 +381,46 @@ def main() -> None:
     print(f"# faster-whisper {faster_whisper.__version__}; base transcribe {BASE_TRANSCRIBE}")
     print(f"# variants: {', '.join(v[0] for v in variants)}; segment caps: "
           + ", ".join(f"{c:g} s" for c in seg_caps), flush=True)
+    print(f"# device {device}; compute types: {', '.join(compute_types)}; ctranslate2 "
+          f"{ctranslate2.__version__}; LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', '')}")
+    swap_start = swap_mb()
+    print(f"# memory at start: {mem_text(device)}", flush=True)
 
-    model, model_threads = None, None
+    model, model_key = None, None
     rate = None
     summary = []
     for seg_cap in seg_caps:
         audio_capture.CAP = int(seg_cap * SR)  # H2: this script only; Segmenter reads it at run time
         print(f"\n##### segment cap {seg_cap:g} s", flush=True)
         clips = load_clips(args.clips)
-        for name, load_kw, trans_kw in variants:
-            threads = load_kw.get("cpu_threads", BASE_LOAD["cpu_threads"])
-            if threads != model_threads:
-                model = None  # free the old model before loading the next (RAM)
-                model = load_model(threads)
-                model_threads = threads
-                # Warm-up call, not timed: the first call carries one-off start-up costs.
-                list(model.transcribe(clips[0][2][0].audio, **BASE_TRANSCRIBE)[0])
-                print("# warm-up done (not counted)", flush=True)
-                print("# G3 encoder-only time per segment, cpu_threads="
-                      f"{threads} (one pass on the padded 30 s window):")
-                for wav, _ref, segs in clips:
-                    for s in segs:
-                        print(f"#   {wav.stem} seg {s.id}: {len(s.audio) / SR:5.2f} s audio -> "
-                              f"encoder {encoder_time(model, s.audio):.2f} s", flush=True)
-            if trans_kw.get("max_new_tokens") == "cap" and rate is None:
-                rate = token_rate(model)
-            summary.append(run_one(model, rate, clips, seg_cap, name, load_kw, trans_kw))
+        for compute_type in compute_types:
+            for name, load_kw, trans_kw in variants:
+                threads = load_kw.get("cpu_threads", BASE_LOAD["cpu_threads"])
+                if (threads, compute_type) != model_key:
+                    model = None  # free the old model before loading the next (RAM, VRAM)
+                    gc.collect()
+                    model = load_model(threads, device, compute_type)
+                    model_key = (threads, compute_type)
+                    # Warm-up call, not timed: the first call carries one-off start-up costs.
+                    list(model.transcribe(clips[0][2][0].audio, **BASE_TRANSCRIBE)[0])
+                    print("# warm-up done (not counted)", flush=True)
+                    print(f"# memory after load + warm-up: {mem_text(device)}", flush=True)  # J4
+                    print(f"# G3 encoder-only time per segment, {device} {compute_type}, "
+                          f"cpu_threads={threads} (one pass on the padded 30 s window):")
+                    for wav, _ref, segs in clips:
+                        for s in segs:
+                            print(f"#   {wav.stem} seg {s.id}: {len(s.audio) / SR:5.2f} s audio -> "
+                                  f"encoder {encoder_time(model, s.audio, device):.2f} s", flush=True)
+                if trans_kw.get("max_new_tokens") == "cap" and rate is None:
+                    rate = token_rate(model)
+                summary.append(run_one(model, rate, clips, seg_cap, name, load_kw, trans_kw,
+                                       device, compute_type))
 
     print("\n=== summary")
     for line in summary:
         print(line)
+    print(f"swap used: start {swap_start:.0f} MB -> end {swap_mb():.0f} MB "
+          f"({swap_mb() - swap_start:+.0f} MB)")
 
 
 if __name__ == "__main__":

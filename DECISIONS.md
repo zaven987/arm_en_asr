@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-04
+- Created: 2026-10-26 · Last updated: 2026-11-05
 
 ---
 
@@ -292,6 +292,7 @@ DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 pytest.ini                # added 2026-10-31: pythonpath = src, markers hardware / slow excluded by default via addopts;
                           #   app.py adds src/ to sys.path itself (no packaging, no pyproject.toml)
 requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
+requirements-gpu.in  requirements-gpu.txt   # added 2026-11-05 (D29 G1; .venv-gpu, gitignored)
 ```
 
 **D17 — Evaluation clips: each clip has one device role.**
@@ -411,6 +412,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - No runtime fallback between GPU and CPU (D7, working rule 2).
 - No time-box (Zaven, 2026-11-05); the three-strikes rule applies.
 - Alternatives: Option 1, shorter segments (more mid-word cuts, L4, and possibly worse CER); Option 3, accept the misses (breaks the only hard rule).
+- Addition (Zaven, 2026-11-05): G0 done: ctranslate2 4.8.4 sees 1 CUDA device; supported `int8_float16`, `float16`, `int8`, `int8_float32`, `float32`; VRAM 5 / 2048 MiB in use (`command_outputs/m5_gpu_check.txt`).
 
 ---
 

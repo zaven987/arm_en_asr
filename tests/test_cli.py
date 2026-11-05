@@ -5,6 +5,9 @@ Step S8 adds (Q8): unknown stdin command, `quit` + Enter. These start the app li
 PulseAudio source; no person is needed (not marked `hardware`).
 M5 S3 adds (D27 E2, E4, F5): `--system-wav` still refused (replaced in S6); file mode with the mic
 only ends by itself with exit 0 (loads the models, needs the GPU, D30).
+M6 S6 (D27 S6, H3, H5): the refusal test is replaced by "a short --system-wav run is accepted and
+exits 0" (real diarizer on the committed fixture speech_short.wav, no eval data, D22); the missing-
+model error also names the speaker-embedding model; app.SPEAKER_MODEL equals diarizer.MODEL_FILE.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app.py"
+SPEECH_SHORT = ROOT / "tests" / "fixtures" / "speech_short.wav"   # D22, FLEURS CC-BY 4.0
 
 
 def load_app():
@@ -87,12 +91,19 @@ def test_missing_model(tmp_path, monkeypatch, capsys):
     assert exc.value.code != 0
     err = capsys.readouterr().err
     assert "model files missing" in err
-    for name in ("Silero VAD", "faster-whisper small", "opus-mt-hy-en"):
+    for name in ("Silero VAD", "faster-whisper small", "opus-mt-hy-en",
+                 "WeSpeaker ResNet34 speaker embedding"):   # H3: checked always
         assert name in err, f"error does not name {name}"
     assert str(empty) in err
     # No download attempted: the app forces offline mode and creates nothing.
     assert os.environ["HF_HUB_OFFLINE"] == "1"
     assert list(empty.iterdir()) == []
+
+
+def test_speaker_model_path_matches_diarizer():
+    """H3: app.py writes the path itself (no sherpa-onnx import in the early checks); it must not drift."""
+    from arm_en_asr.diarizer import MODEL_FILE
+    assert load_app().SPEAKER_MODEL == MODEL_FILE
 
 
 # ---------------------------------------------------------------- S8: stdin commands (Q8)
@@ -176,18 +187,26 @@ def test_quit_shuts_down_cleanly():
     assert not parec_running(source), "parec still running after quit"
 
 
-# ---------------------------------------------------------------- M5 S3 (D27 E2, E4, F5)
+# ---------------------------------------------------------------- M5 S3 (D27 E2), M6 S6 (H5)
 
-FILE_RUN_TIMEOUT = 120  # seconds: model loading on the GPU + warm-up + a 0.5 s file
+FILE_RUN_TIMEOUT = 120  # seconds: model loading on the GPU + warm-up + a short file
 
 
-def test_system_wav_still_refused(tmp_path):
-    """E4 / F5: until S6 connects the diarizer, a valid --system-wav is refused, never ignored."""
-    wav = tmp_path / "silence.wav"
-    write_silent_wav(wav)
-    r = run_app("--mic-wav", str(wav), "--system-wav", str(wav))
-    assert r.returncode == 1, f"exit {r.returncode}; stderr:\n{r.stderr}"
-    assert "refused until the diarizer is connected" in r.stderr
+def test_system_wav_run_accepted(tmp_path):
+    """D27 S6 (replaces the S3 refusal test): a short --system-wav run is accepted, the real
+    diarizer labels its line "Speaker 1", the session ends by itself (E2) with exit 0."""
+    assert SPEECH_SHORT.is_file(), f"fixture missing: {SPEECH_SHORT} (run scripts/make_fixtures.py)"
+    silence = tmp_path / "silence.wav"
+    write_silent_wav(silence)
+    r = subprocess.run(
+        [sys.executable, str(APP), "--mic-wav", str(silence), "--system-wav", str(SPEECH_SHORT)],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=FILE_RUN_TIMEOUT, cwd=ROOT,
+    )
+    assert r.returncode == 0, f"exit {r.returncode}; stderr:\n{r.stderr}"
+    assert f"system: {SPEECH_SHORT}" in r.stderr
+    assert "Speaker 1:" in r.stdout, f"no Speaker 1 line; stdout:\n{r.stdout}\nstderr:\n{r.stderr}"
+    assert "Me:" not in r.stdout, f"silent mic printed a line; stdout:\n{r.stdout}"
+    assert r.stderr.strip().splitlines()[-1] == "stopped"
 
 
 def test_file_mode_mic_only_ends_by_itself(tmp_path):

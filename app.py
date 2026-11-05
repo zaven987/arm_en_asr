@@ -11,7 +11,7 @@ Typing `quit` + Enter stops cleanly (exit 0); file mode also stops by itself whe
 ended and every line is printed (exit 0, D27 E2). A lost device ends the whole session (exit 1, E3).
 Ctrl+C = same clean shutdown, exit 130. Errors exit 1.
 Transcript lines go to stdout; all other messages go to stderr (M3 S8, Q1-Q9).
-System audio is refused until the diarizer is connected (D27 E4, step S6).
+System-audio lines are labelled "Speaker N" by the diarizer (D27 S6); mic lines are always "Me".
 """
 
 from __future__ import annotations
@@ -36,6 +36,9 @@ MODELS_DIR = ROOT / "models"
 N_ASR_WORKERS = 1        # D1: start with N = 1; Asr num_workers must equal it (D3, P9)
 POLL_S = 0.2             # Q3: main thread checks for pipeline errors this often
 EXIT_INTERRUPTED = 130   # Q6: Ctrl+C
+# D27 S6 H3: speaker-embedding model, under MODELS_DIR. Must equal diarizer.MODEL_FILE (checked by T6);
+# written here so the early checks and --list-devices do not import sherpa-onnx.
+SPEAKER_MODEL = Path("speaker-embedding") / "wespeaker_en_voxceleb_resnet34.onnx"
 
 
 class AppError(Exception):
@@ -57,6 +60,8 @@ def required_model_files(models_dir: Path) -> list[tuple[str, Path]]:
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "shared_vocabulary.json"),
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "source.spm"),
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "target.spm"),
+        # H3 (Zaven, 2026-11-05): checked always, even without a system input.
+        ("WeSpeaker ResNet34 speaker embedding", models_dir / SPEAKER_MODEL),
     ]
 
 
@@ -159,11 +164,6 @@ def run(args: argparse.Namespace) -> int:
     # 2. Models (read MODELS_DIR now, not at import time).
     check_models(MODELS_DIR)
 
-    # 3. D27 E4 / F5: system lines need the real diarizer; refuse rather than mislabel or ignore.
-    if args.system is not None or args.system_wav is not None:
-        raise AppError("system audio (--system / --system-wav) is refused until the diarizer is "
-                       "connected (D27 E4, step S6).")
-
     return run_session(args)
 
 
@@ -178,9 +178,10 @@ def run_session(args: argparse.Namespace) -> int:
     from arm_en_asr.asr import Asr, AsrError
     from arm_en_asr.audio_capture import (Capture, CaptureError, ParecSource, Segmenter, SileroVad,
                                           WavSource, new_id_counter)
+    from arm_en_asr.diarizer import Diarizer, DiarizerError
     from arm_en_asr.pipeline import Pipeline, PipelineError
     from arm_en_asr.translate import Mt, MtError
-    known_errors = (AsrError, CaptureError, MtError, PipelineError)
+    known_errors = (AsrError, CaptureError, DiarizerError, MtError, PipelineError)
 
     live = args.mic is not None or args.system is not None
     # F3: inputs in the order mic, system: (device, name or file).
@@ -197,10 +198,15 @@ def run_session(args: argparse.Namespace) -> int:
         asr = Asr(MODELS_DIR / "faster-whisper-small", num_workers=N_ASR_WORKERS)
         asr.warm_up()                    # W2 (D26 addition): first real segment is not slower
         mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
+        # H1 (D27 S6): the diarizer is built only with a system input (no RAM, no thread otherwise).
+        # No warm-up (H4): its first call measured no slower than later ones (m6_s4_embed_resnet34.txt).
+        has_system = any(device == "system" for device, _ in wanted)
+        diarizer = Diarizer(MODELS_DIR / SPEAKER_MODEL) if has_system else None
         sources = {device: ParecSource(value) if live
                    else WavSource(value, realtime=True)    # D21: always real-time in the app
                    for device, value in wanted}
-        pipeline = Pipeline(asr, mt, n_workers=N_ASR_WORKERS)
+        # E4 stays: Pipeline refuses a system segment when no diarizer is given.
+        pipeline = Pipeline(asr, mt, n_workers=N_ASR_WORKERS, diarizer=diarizer)
     except known_errors as e:
         raise AppError(str(e)) from None
 

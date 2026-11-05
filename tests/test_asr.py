@@ -1,10 +1,11 @@
-"""T1.2 - asr on the speech fixture (TEST.md; D3, A1-A6, D26).
+"""T1.2 - asr on the speech fixture (TEST.md; D3, A1-A6, D26, D30).
 
 Sanity check, not a quality bar: non-empty text, >= 50 % Armenian-script letters (D20).
 Also: Asr pointed at an empty folder fails with a clear "model missing" error (A6).
 Also: token_cap follows D26 (no model needed).
 Also: Asr.warm_up() runs without error (D26 addition, W4, 2026-11-04).
-A missing fixture or model makes the test fail, never skip (D22).
+Also: Asr loads Whisper on cuda int8_float16 (D30). These tests need the GPU (D30 G4e).
+A missing fixture, model or GPU makes the test fail, never skip (D22).
 """
 from __future__ import annotations
 
@@ -60,3 +61,9 @@ def test_token_cap_follows_d26():
 def test_warm_up_runs():
     """W4: warm_up() transcribes silence once and returns nothing."""
     assert Asr(WHISPER).warm_up() is None
+
+
+def test_asr_loads_on_gpu():
+    """D30 G4a: Whisper is on the GPU with int8_float16 (CTranslate2 reports both)."""
+    model = Asr(WHISPER)._model.model
+    assert (model.device, model.compute_type) == ("cuda", "int8_float16")

@@ -33,6 +33,9 @@ J4  memory after load + warm-up and after each variant: current RSS, peak RSS so
     and on cuda this process's VRAM from nvidia-smi.
 J5  G3 encoder timing on cuda copies the encoder output to the CPU (to_cpu=True), so it includes a
     small copy; the cpu path is unchanged.
+L4 (D30, 2026-11-05): runs in .venv. With --device cuda the CUDA libraries are loaded the app's way
+(asr.load_cuda_libraries), so no LD_LIBRARY_PATH is needed. The default stays cpu int8: a CPU
+baseline, no longer the app setting (the app runs cuda int8_float16, D30).
 """
 from __future__ import annotations
 
@@ -63,7 +66,7 @@ VAD_PATH = MODELS_DIR / "silero_vad.onnx"
 META_DIR = ROOT / "eval" / "meta"
 RATE_CLIPS = ["mic_01", "mic_02", "mic_03"]  # G4 c: token rate from these references
 
-# Current setting, same as asr.py (D3 A1-A2 + temperature=0). device / compute_type: J1, J2.
+# CPU baseline (D3 A1-A2 + temperature=0); the app setting until D30. device / compute_type: J1, J2.
 BASE_LOAD = dict(device="cpu", compute_type="int8", cpu_threads=4, num_workers=1)
 DEVICES = ("cpu", "cuda")  # J1
 BASE_TRANSCRIBE = dict(language="hy", task="transcribe", vad_filter=False,
@@ -360,6 +363,12 @@ def main() -> None:
         for name, load_kw, _trans in variants:
             if "cpu_threads" in load_kw:
                 fail(f"variant {name!r} changes cpu_threads, which has no meaning on cuda")
+    if device == "cuda":
+        from arm_en_asr.asr import AsrError, load_cuda_libraries
+        try:
+            load_cuda_libraries()  # L4: D30 G4c, same as the app
+        except AsrError as e:
+            fail(str(e))
     supported = ctranslate2.get_supported_compute_types(device)
     for ct in compute_types:
         if ct not in supported:

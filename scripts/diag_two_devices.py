@@ -37,6 +37,8 @@ K10 the parent checks before any child starts: cuda with no CUDA device or an un
 K11 on cuda, the child's VRAM (nvidia-smi) after models load + warm-up and at the end; not sampled
     every 0.2 s, so nvidia-smi calls do not load the CPU during the run.
 K12 header, variant summaries and the comparison table show the ASR device / compute type and VRAM.
+L4 (D30, 2026-11-05): runs in .venv; Asr loads the CUDA libraries itself (no LD_LIBRARY_PATH).
+--asr-device / --asr-compute-type default to the app setting (asr.DEVICE / asr.COMPUTE_TYPE).
 """
 from __future__ import annotations
 
@@ -65,7 +67,12 @@ POLL_S = 0.2
 LATENCY_LIMIT = 5.0           # D12
 SUMMARY_TAG = "SUMMARY_JSON\t"
 ASR_DEVICES = ("cpu", "cuda")  # K8
-APP_ASR_DEVICE, APP_COMPUTE_TYPE = "cpu", "int8"   # what asr.py loads today (D3 A1)
+
+
+def app_asr_setting() -> tuple[str, str]:
+    """L4: what asr.py loads (D30: cuda, int8_float16), so a default run is the app setting."""
+    import arm_en_asr.asr as asr_module
+    return asr_module.DEVICE, asr_module.COMPUTE_TYPE
 
 
 class DiagError(Exception):
@@ -146,7 +153,7 @@ def run_variant(name: str, clips: dict[str, Path], asr_device: str, compute_type
           f"ASR {asr_device} {compute_type} ===", flush=True)   # K12
     t_load = time.monotonic()
     asr_module.CPU_THREADS = cpu_threads           # K3: this process only
-    if (asr_device, compute_type) != (APP_ASR_DEVICE, APP_COMPUTE_TYPE):
+    if (asr_device, compute_type) != (asr_module.DEVICE, asr_module.COMPUTE_TYPE):
         # K9: this process only; asr.py is not changed. Asr calls WhisperModel(path, device=...,
         # compute_type=..., cpu_threads=..., num_workers=...); we replace device and compute_type.
         whisper_model = asr_module.WhisperModel
@@ -324,24 +331,28 @@ def main() -> None:
     p.add_argument("--system", default=str(CLIPS["system"]), help="WAV fed as system audio (default sys_01)")
     p.add_argument("--variants", default=",".join(VARIANTS),
                    help=f"comma list from {','.join(VARIANTS)} (default: all)")
-    p.add_argument("--asr-device", default=APP_ASR_DEVICE, choices=ASR_DEVICES, help="K8: default cpu")
+    p.add_argument("--asr-device", default=None, choices=ASR_DEVICES,
+                   help="K8 / L4: default the app setting (asr.DEVICE)")
     p.add_argument("--asr-compute-type", default=None,
-                   help=f"K8: CTranslate2 compute type for Whisper; default {APP_COMPUTE_TYPE} on cpu, "
-                        "required on cuda")
+                   help="K8 / L4: CTranslate2 compute type for Whisper; default the app setting "
+                        "(asr.COMPUTE_TYPE); required when --asr-device differs from the app")
     args = p.parse_args()
+    app_device, app_compute = app_asr_setting()
+    asr_device = args.asr_device or app_device
     compute_type = args.asr_compute_type
     if compute_type is None:
-        if args.asr_device == "cuda":
-            p.error("--asr-device cuda needs --asr-compute-type (e.g. int8_float16)")
-        compute_type = APP_COMPUTE_TYPE
+        if asr_device != app_device:
+            p.error(f"--asr-device {asr_device} needs --asr-compute-type (the app setting is "
+                    f"{app_device} {app_compute})")
+        compute_type = app_compute
     clips = {"mic": (ROOT / args.mic).resolve(), "system": (ROOT / args.system).resolve()}
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     unknown = [v for v in variants if v not in VARIANTS]
     if unknown or not variants:
         p.error(f"unknown or empty --variants {unknown or args.variants!r}; choose from {','.join(VARIANTS)}")
     try:
-        code = (run_variant(args.variant, clips, args.asr_device, compute_type) if args.variant
-                else run_all(clips, variants, args.asr_device, compute_type))
+        code = (run_variant(args.variant, clips, asr_device, compute_type) if args.variant
+                else run_all(clips, variants, asr_device, compute_type))
     except DiagError as e:
         print(f"ERROR: {e}", file=sys.stderr, flush=True)
         code = 1

@@ -66,14 +66,16 @@
 
 #### T1.2 — `asr`
 - **Purpose:** ASR runs and returns Armenian text. This is a sanity check, not a quality bar.
-- **Linked:** D3, D26, R5.
+- **Linked:** D3, D26, D30, R5.
 - **Input:** speech fixture.
 - **Run:** `python -m pytest tests/test_asr.py -v`
+- **Needs:** the MX550 GPU (D30 G4e); without it the tests fail loudly, never skip (D22).
 - **Pass:**
   - Speech fixture → non-empty text, and at least 50 % of its letters are Armenian script.
   - `Asr` pointed at an empty folder → fails with a clear "model missing" error; no download attempted (A6, D15).
   - `Asr.warm_up()` runs without error (D26 addition, 2026-11-04).
   - `token_cap` follows D26: 1.65 s → 40, 4.5 s → 107, 7 s → 166, 20 s → 220 tokens.
+  - `Asr` loads Whisper on cuda `int8_float16` (D30).
 - **Status:** passed (2026-11-01, see results log)
 
 #### T1.3 — `translate`

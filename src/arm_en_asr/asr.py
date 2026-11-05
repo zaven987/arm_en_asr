@@ -1,18 +1,25 @@
-"""ASR: Armenian speech -> Armenian text (DECISIONS D3, D7, D26; M3 S4 decisions A1-A6, S7 P9).
+"""ASR: Armenian speech -> Armenian text (DECISIONS D3, D7, D26, D30; M3 S4 decisions A1-A6, S7 P9).
 
 One Asr object holds one faster-whisper model. Each call transcribes one Segment's audio,
-independently of every other segment.
+independently of every other segment. D30: Whisper runs on the MX550 GPU (cuda, int8_float16);
+no GPU is an error, never a CPU fallback. The CUDA libraries come from the pip NVIDIA packages and
+are loaded here, so no LD_LIBRARY_PATH is needed.
 """
 from __future__ import annotations
 
+import ctypes
 import math
 from pathlib import Path
 
+import ctranslate2
 import numpy as np
 from faster_whisper import WhisperModel
 
 SR = 16000
-CPU_THREADS = 4   # A3: leave cores for capture + MT; tuned in M4 (T4)
+DEVICE = "cuda"               # D30 G4a: Whisper on the MX550 GPU (was "cpu", D7)
+COMPUTE_TYPE = "int8_float16"  # D30 G4a / D29 G2: ~5x faster than CPU int8, same loops and CER
+CUDA_LIB_PACKAGES = ("cuda_nvrtc", "cublas", "cudnn")  # D30 G4c: lib folders under nvidia/
+CPU_THREADS = 4   # A3: leave cores for capture + MT; tuned in M4 (T4). No effect on cuda (D30)
 NUM_WORKERS = 1   # A3 / D1: default N = 1; must equal the pipeline's ASR worker count (P9)
 BEAM_SIZE = 1     # D26: greedy decoding, about half the decoding time of beam 5 (latency fix)
 TEMPERATURE = 0.0  # D3 (Zaven, 2026-11-01): decode once, no temperature fallback retries;
@@ -31,7 +38,37 @@ WARM_UP_S = 1.0        # W2: seconds of silence transcribed once at startup
 
 
 class AsrError(Exception):
-    """ASR problem the user must see (missing model)."""
+    """ASR problem the user must see (missing model, no GPU, missing CUDA library)."""
+
+
+_cuda_libraries_loaded = False
+
+
+def load_cuda_libraries() -> None:
+    """D30 G4c: load cuBLAS / cuDNN / nvrtc from the installed NVIDIA pip packages with RTLD_GLOBAL,
+    so CTranslate2 finds them later without LD_LIBRARY_PATH (checked: m5_g4_preload.txt).
+    Runs once per process; anything missing raises AsrError naming it."""
+    global _cuda_libraries_loaded
+    if _cuda_libraries_loaded:
+        return
+    try:
+        import nvidia
+    except ImportError:
+        raise AsrError("CUDA libraries missing: the nvidia-cublas-cu12 / nvidia-cudnn-cu12 packages "
+                       "are not installed in this environment (D30; see requirements.txt)") from None
+    roots = [Path(p) for p in nvidia.__path__]
+    for package in CUDA_LIB_PACKAGES:
+        lib_dirs = [r / package / "lib" for r in roots if (r / package / "lib").is_dir()]
+        libs = sorted(so for d in lib_dirs for so in d.glob("lib*.so*"))
+        if not libs:
+            raise AsrError(f"CUDA libraries missing: no lib*.so* for nvidia/{package} in "
+                           + ", ".join(str(r) for r in roots) + " (D30)")
+        for so in libs:
+            try:
+                ctypes.CDLL(str(so), mode=ctypes.RTLD_GLOBAL)
+            except OSError as e:
+                raise AsrError(f"CUDA library {so.name} cannot be loaded: {e} (D30)") from e
+    _cuda_libraries_loaded = True
 
 
 def token_cap(seconds: float) -> int:
@@ -50,11 +87,14 @@ class Asr:
                 f"model missing: faster-whisper small at {self.model_dir} "
                 "(run scripts/download_models.py)"
             )
-        # A1: CPU, int8 (D3, D7).
+        # D30 G4a: GPU required; never a CPU fallback (D7, working rule 2).
+        if ctranslate2.get_cuda_device_count() == 0:
+            raise AsrError("GPU required (D30): ctranslate2 sees no CUDA device")
+        load_cuda_libraries()  # D30 G4c
         self._model = WhisperModel(
             str(self.model_dir),
-            device="cpu",
-            compute_type="int8",
+            device=DEVICE,
+            compute_type=COMPUTE_TYPE,
             cpu_threads=CPU_THREADS,
             num_workers=self.num_workers,
         )

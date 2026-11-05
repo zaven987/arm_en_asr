@@ -36,6 +36,9 @@ J5  G3 encoder timing on cuda copies the encoder output to the CPU (to_cpu=True)
 L4 (D30, 2026-11-05): runs in .venv. With --device cuda the CUDA libraries are loaded the app's way
 (asr.load_cuda_libraries), so no LD_LIBRARY_PATH is needed. The default stays cpu int8: a CPU
 baseline, no longer the app setting (the app runs cuda int8_float16, D30).
+M1 (M7 beam_size sweep, Zaven, 2026-11-05): variants b2 / b3 = beam_size 2 / 3. Beam 5 is the base
+setting, so beam 5 is a combination without any b variant (e.g. g+c+d1):
+    python scripts/diag_asr.py eval/clips/mic_0{1,2,3}.wav eval/clips/sys_01.wav --variants g+b+c+d1,g+b2+c+d1,g+b3+c+d1,g+c+d1 --device cuda --compute-type int8_float16
 """
 from __future__ import annotations
 
@@ -87,6 +90,8 @@ EFFECTIVE_CAP_LIMIT = MAX_NEW_TOKENS_LIMIT // CT2_LENGTH_FACTOR  # 220
 VARIANTS: dict[str, tuple[dict, dict]] = {
     "a": ({}, {}),
     "b": ({}, {"beam_size": 1}),
+    "b2": ({}, {"beam_size": 2}),  # M1 (M7 beam sweep)
+    "b3": ({}, {"beam_size": 3}),  # M1 (M7 beam sweep)
     "c": ({}, {"max_new_tokens": "cap"}),
     "d1": ({}, {"repetition_penalty": 1.1}),
     "d2": ({}, {"repetition_penalty": 1.3}),

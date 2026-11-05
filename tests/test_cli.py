@@ -3,6 +3,8 @@
 M3 step S1 covers: unknown device name, missing model.
 Step S8 adds (Q8): unknown stdin command, `quit` + Enter. These start the app live on a real
 PulseAudio source; no person is needed (not marked `hardware`).
+M5 S3 adds (D27 E2, E4, F5): `--system-wav` still refused (replaced in S6); file mode with the mic
+only ends by itself with exit 0 (loads the models, needs the GPU, D30).
 """
 
 from __future__ import annotations
@@ -172,3 +174,30 @@ def test_quit_shuts_down_cleanly():
     assert code == 0, f"exit {code}; stderr:\n{app.stderr}"
     assert app.stderr_lines[-1].strip() == "stopped"
     assert not parec_running(source), "parec still running after quit"
+
+
+# ---------------------------------------------------------------- M5 S3 (D27 E2, E4, F5)
+
+FILE_RUN_TIMEOUT = 120  # seconds: model loading on the GPU + warm-up + a 0.5 s file
+
+
+def test_system_wav_still_refused(tmp_path):
+    """E4 / F5: until S6 connects the diarizer, a valid --system-wav is refused, never ignored."""
+    wav = tmp_path / "silence.wav"
+    write_silent_wav(wav)
+    r = run_app("--mic-wav", str(wav), "--system-wav", str(wav))
+    assert r.returncode == 1, f"exit {r.returncode}; stderr:\n{r.stderr}"
+    assert "refused until the diarizer is connected" in r.stderr
+
+
+def test_file_mode_mic_only_ends_by_itself(tmp_path):
+    """E2 with one input: the file ends, every line is printed, exit 0."""
+    wav = tmp_path / "silence.wav"
+    write_silent_wav(wav)
+    r = subprocess.run(
+        [sys.executable, str(APP), "--mic-wav", str(wav)],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=FILE_RUN_TIMEOUT, cwd=ROOT,
+    )
+    assert r.returncode == 0, f"exit {r.returncode}; stderr:\n{r.stderr}"
+    assert f"playing mic: {wav}" in r.stderr
+    assert r.stderr.strip().splitlines()[-1] == "stopped"

@@ -7,9 +7,11 @@ Usage (D11):
     python app.py [--mic-wav a.wav] [--system-wav b.wav]    # file mode, tests only
     (at least one input; either may be left out)
 
-Typing `quit` + Enter stops cleanly (exit 0); file mode also stops by itself when the file has
-ended and every line is printed (exit 0). Ctrl+C = same clean shutdown, exit 130. Errors exit 1.
+Typing `quit` + Enter stops cleanly (exit 0); file mode also stops by itself when every file has
+ended and every line is printed (exit 0, D27 E2). A lost device ends the whole session (exit 1, E3).
+Ctrl+C = same clean shutdown, exit 130. Errors exit 1.
 Transcript lines go to stdout; all other messages go to stderr (M3 S8, Q1-Q9).
+System audio is refused until the diarizer is connected (D27 E4, step S6).
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 # No runtime downloads (D15). Set before any Hugging Face library is imported.
@@ -156,9 +159,10 @@ def run(args: argparse.Namespace) -> int:
     # 2. Models (read MODELS_DIR now, not at import time).
     check_models(MODELS_DIR)
 
-    # 3. System audio is processed from M5 on; until then refuse it rather than ignore it.
+    # 3. D27 E4 / F5: system lines need the real diarizer; refuse rather than mislabel or ignore.
     if args.system is not None or args.system_wav is not None:
-        raise AppError("system audio (--system / --system-wav) is not processed yet (milestone M5).")
+        raise AppError("system audio (--system / --system-wav) is refused until the diarizer is "
+                       "connected (D27 E4, step S6).")
 
     return run_session(args)
 
@@ -172,40 +176,49 @@ def run_session(args: argparse.Namespace) -> int:
     """Q1-Q6: load models, start pipeline + capture + stdin reader, wait, shut down cleanly."""
     # Imported here, so --list-devices and the early checks stay fast.
     from arm_en_asr.asr import Asr, AsrError
-    from arm_en_asr.audio_capture import (CaptureError, ParecSource, Segmenter, SileroVad,
-                                          WavSource, new_id_counter, run_capture)
+    from arm_en_asr.audio_capture import (Capture, CaptureError, ParecSource, Segmenter, SileroVad,
+                                          WavSource, new_id_counter)
     from arm_en_asr.pipeline import Pipeline, PipelineError
     from arm_en_asr.translate import Mt, MtError
     known_errors = (AsrError, CaptureError, MtError, PipelineError)
 
+    live = args.mic is not None or args.system is not None
+    # F3: inputs in the order mic, system: (device, name or file).
+    wanted = [(device, value) for device, value in
+              (("mic", args.mic if live else args.mic_wav),
+               ("system", args.system if live else args.system_wav))
+              if value is not None]
+
     # Q1: models, then pipeline, then capture, then commands.
     try:
         info("loading models…")
-        vad = SileroVad(MODELS_DIR / "silero_vad.onnx")
+        # One SileroVad per device: the model keeps state between windows.
+        vads = {device: SileroVad(MODELS_DIR / "silero_vad.onnx") for device, _ in wanted}
         asr = Asr(MODELS_DIR / "faster-whisper-small", num_workers=N_ASR_WORKERS)
         asr.warm_up()                    # W2 (D26 addition): first real segment is not slower
         mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
-        if args.mic is not None:
-            source = ParecSource(args.mic)
-            ready = f"listening on mic: {args.mic} — type quit + Enter to stop"
-        else:
-            source = WavSource(args.mic_wav, realtime=True)  # D21: always real-time in the app
-            ready = f"playing {args.mic_wav} at real-time speed — type quit + Enter to stop early"
-        segmenter = Segmenter("mic", vad, new_id_counter())
+        sources = {device: ParecSource(value) if live
+                   else WavSource(value, realtime=True)    # D21: always real-time in the app
+                   for device, value in wanted}
         pipeline = Pipeline(asr, mt, n_workers=N_ASR_WORKERS)
     except known_errors as e:
         raise AppError(str(e)) from None
 
-    wake = threading.Event()             # set by: quit, end of capture (file end / error)
-    capture_errors: list[BaseException] = []
+    # F4: one ready line for all inputs.
+    listing = ", ".join(f"{device}: {value}" for device, value in wanted)
+    ready = (f"listening on {listing} — type quit + Enter to stop" if live
+             else f"playing {listing} at real-time speed — type quit + Enter to stop early")
 
-    def capture() -> None:
-        try:
-            run_capture(source, segmenter, pipeline.submit)
-        except BaseException as e:       # device lost, or submit refused: shown by the main thread
-            capture_errors.append(e)
-        finally:
-            wake.set()                   # file mode: the file has ended
+    wake = threading.Event()             # set by: quit, every input ended (E2), a capture error (E3)
+    ids = new_id_counter()               # shared, so ids are unique across devices
+    session_start = time.monotonic()     # E1 / F1: one start time, just before capture starts
+    try:
+        capture = Capture(
+            [(sources[device], Segmenter(device, vads[device], ids, session_start=session_start))
+             for device, _ in wanted],
+            pipeline.submit, wake)
+    except CaptureError as e:
+        raise AppError(str(e)) from None
 
     def commands() -> None:
         for line in sys.stdin:
@@ -219,8 +232,7 @@ def run_session(args: argparse.Namespace) -> int:
         # Q5: end of stdin: stop reading commands, keep running.
 
     threading.Thread(target=commands, name="stdin", daemon=True).start()
-    capture_thread = threading.Thread(target=capture, name="capture-mic", daemon=True)
-    capture_thread.start()
+    capture.start()                      # threads capture-mic / capture-system (F2)
     info(ready)
 
     exit_code = 0
@@ -233,10 +245,9 @@ def run_session(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         exit_code = EXIT_INTERRUPTED     # Q6: same clean shutdown as quit
 
-    # Shutdown (P8, Q4): stop capture first, then drain what was already captured.
+    # Shutdown (P8, Q4, F3): stop every input first, then drain what was already captured.
     try:
-        source.stop()
-        capture_thread.join()
+        capture.stop()
         try:
             pipeline.close()
         except PipelineError as e:
@@ -245,7 +256,7 @@ def run_session(args: argparse.Namespace) -> int:
         info("stopped (interrupted while finishing the last lines)")
         return EXIT_INTERRUPTED
 
-    errors = [str(e) for e in (*capture_errors, pipeline_error) if e is not None]
+    errors = [str(e) for e in (*capture.errors, pipeline_error) if e is not None]
     if errors:
         raise AppError("\n".join(dict.fromkeys(errors)))  # Q4: exit 1, each error once
     info("stopped")

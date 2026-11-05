@@ -1,12 +1,16 @@
-"""Audio capture + VAD segmentation (DECISIONS D8, D10, D21; M3 S3 decisions V1-V7, 2026-10-31).
+"""Audio capture + VAD segmentation (DECISIONS D8, D10, D21; M3 S3 decisions V1-V7, 2026-10-31;
+M5 S3 decisions F1-F6, 2026-11-05).
 
 Flow per device:  source (parec or WAV) -> 512-sample chunks -> Silero VAD -> Segmenter -> Segment
 Each device gets its own SileroVad (the model keeps state between windows) and its own Segmenter.
+Capture (F2) runs one thread per device; with two devices the Segmenters share one session start
+time (D27 E1, F1), the session ends when every input has ended (E2) and one lost device ends it (E3).
 """
 from __future__ import annotations
 
 import itertools
 import subprocess
+import threading
 import time
 import wave
 from collections.abc import Callable, Iterator
@@ -94,22 +98,29 @@ class ParecSource:
         self.device_name = device_name
         self._stopping = False
         self._proc: subprocess.Popen | None = None
+        # F8: stop() and starting parec never overlap, so a stop() that comes before parec has
+        # started is never missed (otherwise parec would start afterwards and be read forever).
+        self._lock = threading.Lock()
 
     def stop(self) -> None:
-        self._stopping = True
-        if self._proc is not None and self._proc.poll() is None:
-            self._proc.terminate()
+        with self._lock:
+            self._stopping = True
+            if self._proc is not None and self._proc.poll() is None:
+                self._proc.terminate()
 
     def chunks(self) -> Iterator[tuple[np.ndarray, float]]:
         cmd = ["parec", f"--device={self.device_name}", "--format=s16le",
                "--rate=16000", "--channels=1", "--raw"]
-        try:
-            # start_new_session: Ctrl+C in the terminal reaches only the app, which then stops
-            # parec itself (Q6); otherwise parec would die first and look like "device lost".
-            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          start_new_session=True)
-        except FileNotFoundError:
-            raise CaptureError("`parec` not found. Install pulseaudio-utils.") from None
+        with self._lock:
+            if self._stopping:  # F8: stopped before parec started: nothing to read
+                return
+            try:
+                # start_new_session: Ctrl+C in the terminal reaches only the app, which then stops
+                # parec itself (Q6); otherwise parec would die first and look like "device lost".
+                self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                              start_new_session=True)
+            except FileNotFoundError:
+                raise CaptureError("`parec` not found. Install pulseaudio-utils.") from None
         try:
             nbytes = WINDOW * 2
             while True:
@@ -166,10 +177,16 @@ class SileroVad:
 class Segmenter:
     """Turns VAD-labelled chunks into Segments (D8, V1-V4). All positions are sample indices."""
 
-    def __init__(self, device: str, vad: SileroVad, ids: Iterator[int]):
+    def __init__(self, device: str, vad: SileroVad, ids: Iterator[int],
+                 session_start: float | None = None):
+        """F1 (D27 E1): `session_start` = time.monotonic() taken once for the whole session, just
+        before the capture threads start. Without it the offset is 0, i.e. the clock starts at this
+        Segmenter's first sample (used by the T1.1 file tests and the diagnostic scripts)."""
         self.device = device
         self.vad = vad
         self.ids = ids                      # shared counter, so ids are unique across devices
+        self.session_start = session_start
+        self._offset: float | None = None   # seconds added to start / end; set on the first chunk
         self._pos = 0                       # samples seen so far
         self._history = np.zeros(0, dtype=np.float32)  # last PAD samples before a segment (pre-roll)
         self._in_speech = False
@@ -181,6 +198,10 @@ class Segmenter:
         self._last_speech_wall = 0.0
 
     def push(self, chunk_i16: np.ndarray, arrival: float) -> list[Segment]:
+        if self._offset is None:
+            # F1: the first chunk's first sample was recorded one window before it arrived.
+            self._offset = (0.0 if self.session_start is None
+                            else arrival - WINDOW / SR - self.session_start)
         chunk = chunk_i16.astype(np.float32) / 32768.0
         is_speech = self.vad.prob(chunk) > THRESHOLD
         c_start, c_end = self._pos, self._pos + len(chunk)
@@ -258,8 +279,8 @@ class Segmenter:
         out.append(Segment(
             id=next(self.ids),
             device=self.device,
-            start=self._first_speech / SR,
-            end=self._last_speech_end / SR,
+            start=self._first_speech / SR + self._offset,
+            end=self._last_speech_end / SR + self._offset,
             audio=audio,
             end_wall=self._last_speech_wall,
         ))
@@ -275,6 +296,64 @@ def run_capture(source, segmenter: Segmenter, emit: Callable[[Segment], None]) -
             emit(seg)
     for seg in segmenter.flush():
         emit(seg)
+
+
+class Capture:
+    """F2 (D27 E2, E3): one capture thread per input, named `capture-<device>`.
+
+    `inputs` = [(source, Segmenter), ...], at most one per device (D11). Each thread runs
+    run_capture(source, segmenter, emit). `wake` is set when every thread has ended normally (E2,
+    file mode) or at once when any thread fails (E3: device lost, or emit refused); the error is
+    kept in `errors`. stop() stops every source and joins every thread; each Segmenter still
+    flushes its open segment, so what was captured is emitted.
+    """
+
+    def __init__(self, inputs: list[tuple[object, Segmenter]], emit: Callable[[Segment], None],
+                 wake: threading.Event):
+        if not inputs:
+            raise CaptureError("no audio input given")
+        devices = [segmenter.device for _, segmenter in inputs]
+        twice = sorted({d for d in devices if devices.count(d) > 1})
+        if twice:
+            raise CaptureError(f"one input per device (D11); given more than once: {', '.join(twice)}")
+        self._inputs = list(inputs)
+        self._emit = emit
+        self._wake = wake
+        self._lock = threading.Lock()
+        self._running = 0
+        self.errors: list[BaseException] = []
+        self.threads = [
+            threading.Thread(target=self._run, args=(source, segmenter),
+                             name=f"capture-{segmenter.device}", daemon=True)
+            for source, segmenter in self._inputs
+        ]
+
+    def start(self) -> None:
+        with self._lock:
+            self._running = len(self.threads)
+        for t in self.threads:
+            t.start()
+
+    def stop(self) -> None:
+        for source, _ in self._inputs:
+            source.stop()
+        for t in self.threads:
+            if t.ident is not None:          # started
+                t.join()
+
+    def _run(self, source, segmenter: Segmenter) -> None:
+        try:
+            run_capture(source, segmenter, self._emit)
+        except BaseException as e:           # E3: shown by the caller after stop()
+            with self._lock:
+                self.errors.append(e)
+            self._wake.set()
+        finally:
+            with self._lock:
+                self._running -= 1
+                all_ended = self._running == 0
+            if all_ended:                    # E2: every input has ended
+                self._wake.set()
 
 
 def new_id_counter() -> Iterator[int]:

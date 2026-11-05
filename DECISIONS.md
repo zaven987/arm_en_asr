@@ -402,6 +402,8 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **F4** one ready line: `listening on mic: <name>, system: <name> — …` / `playing mic: <file>, system: <file> at real-time speed — …`.
   - **F5** E4 unchanged; the refusal message now says the system input is refused until the diarizer is connected (step S6).
   - **F6** docstrings: file mode ends when every file has ended.
+  - **F7** (E3): when a device is lost, its own unfinished segment is dropped (not flushed); the other device's open segment is still drained. (Zaven, 2026-11-05)
+  - **F8** `ParecSource.stop()` and the start of `parec` share a lock; a stop that comes before `parec` has started means `parec` never starts. Why: T6 `test_unknown_stdin_command_keeps_running` hung (`command_outputs/m5_s3_pytest.txt`): `quit` came before `parec` had started, so `parec` started afterwards and was read forever. The race was already there before S3; it was hit now, probably because the app process is larger since D30 and starting `parec` takes longer. T1.1 adds a test for it.
   - Tests: T1.1 gets stub-based checks for F1 (offset, no offset), the shared id counter, E2, E3 and F2's thread names / duplicate device; T6 gets "`--system-wav` still refused" (replaced in S6) and "file mode, mic only, ends by itself with exit 0". TEST.md wording is agreed after the run.
 
 **D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)

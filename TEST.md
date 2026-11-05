@@ -40,7 +40,7 @@
 | T1.3 | Unit: `translate` | M3 | passed |
 | T1.4 | Unit: `output` line format | M3 | passed |
 | T1.5 | Unit: `pipeline` join + order | M3 | passed |
-| T1.6 | Unit: `diarizer` | M6 | not run |
+| T1.6 | Unit: `diarizer` | M6 | passed |
 | T2 | End-to-end latency, file mode | M4 (re-run M5) | passed |
 | T3 | Capture smoke test (`hardware`) | M4 (mic), M5 (both) | not run |
 | T4 | Load test, D2 (`slow`) | M4 | not run |
@@ -122,14 +122,15 @@
 
 #### T1.6 — `diarizer` (M6)
 - **Purpose:** speaker labels stay stable.
-- **Linked:** D9, D17, R11.
-- **Input:** a solo mic clip; a 2-speaker system clip (eval data).
-- **Run:** `python -m pytest -m eval tests/test_diarizer.py -v` (marker `eval`, added 2026-11-04)
+- **Linked:** D9, D17, D27 (S4, S5), R11, R13, L13, L14.
+- **Input:** default suite: made-up 3-d vectors and `tests/fixtures/speech_short.wav` (real model); `eval`: the solo mic clips `mic_01`–`03` and the 2-speaker system clip `sys_01` (eval data).
+- **Run:** default part: in the plain `python -m pytest -v`; eval part: `python -m pytest -m eval tests/test_diarizer.py -v -s` (marker `eval`, added 2026-11-04; `-s` shows the `sys_01` report, added 2026-11-05)
 - **Pass:**
-  - Solo mic clip fed through the diarizer → 100 % of segments get the same speaker number.
-  - 2-speaker system clip → % correct is reported, with no threshold.
-- **Scoring** (agreed 2026-11-04, D27): each segment gets the reference speaker in `eval/meta/sys_01.csv` it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately. The threshold is tuned on `mic_01`–`03` only, never on `sys_01` (R13).
-- **Status:** not run
+  - Default suite (added 2026-11-05, D27 S5): the clustering rules on made-up vectors with a test threshold of 0.7: a long segment joins at or above the threshold and starts a new speaker below it; speakers are numbered in order of appearance; a short segment never creates a speaker (except the first), joins the nearest speaker and never changes a centroid; 2.0 s counts as long; K3 (a) option B (the first long segment joins a short-started Speaker 1 with no check; its centroid comes from long segments only); K3 (b) (not ready → last speaker or Speaker 1); a bad embedding or threshold fails loudly; `THRESHOLD` 0.76 and `SHORT_S` 2.0; a missing model gives "model missing"; the real `Embedder` gives a 256-d unit vector on `speech_short.wav` and `Diarizer` labels it "Speaker 1".
+  - Solo mic clip fed through the diarizer → 100 % of segments get the same speaker number (each of `mic_01`–`03`).
+  - 2-speaker system clip → % correct is reported, with no threshold. Since 2026-11-05 the threshold is tuned on this clip (D27 S5), so its result is not an independent check (L14).
+- **Scoring** (agreed 2026-11-04, D27): each segment gets the reference speaker in `eval/meta/sys_01.csv` it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately. The threshold was first tuned on `mic_01`–`03` only; since 2026-11-05 it is tuned on `mic_01`–`03` **and** `sys_01` (Zaven, D27 S5; no second 2-speaker clip will be made, R13).
+- **Status:** passed (2026-11-05, see results log)
 
 ### T2 — End-to-end latency, file mode
 - **Purpose:** prove that end of phrase → English line takes ≤ 5 s.
@@ -222,3 +223,6 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-05 | T1.1 | fa4588a | plain `python -m pytest -v -s` run; S3 (F1, F2) + F8 | 10/10 T1.1 tests passed (3 fixture tests; session offset and no offset; shared ids; Capture E2, E3, thread names / duplicate device; ParecSource stopped before start); whole default suite 41 passed in 10.01 s | passed | `command_outputs/m5_s3b_pytest.txt` |
 | 2026-11-05 | T6 | fa4588a | same run; live on a real PulseAudio source, no person | 7/7 T6 tests passed (the earlier 5, plus `--system-wav` still refused and file mode with the mic only exits 0); the failed test also passed 5/5 in a row on its own | passed | `command_outputs/m5_s3b_pytest.txt`, `m5_s3_f8_stdin_x5.txt` |
 | 2026-11-05 | — (M6 S4 speaker-embedding measurement, not a test) | fa4588a + `diag_embed.py` (committed after the run) | `diag_embed.py`, sherpa-onnx 1.13.8, CPU, 1 thread; segments from real Silero + Segmenter (7 s cap) on `mic_01`–`03` (31) + `sys_01` (16); no Zoom tab (not a latency test) | ResNet34: 235 ms median / 241 ms max per embedding, +74 MB RSS; nearest centroid wrong 0/31 (mic), 0/16 (sys_01). CAM++: 82 ms median, +50 MB; wrong 4/31 (mic), 5/16 (sys_01) | measurement | `command_outputs/m6_s4_embed_resnet34.txt`, `m6_s4_embed_campplus.txt`; result: D27 J7 (ResNet34), J8 (short segments < 2.0 s) |
+| 2026-11-05 | T1.6 | M6 S4 records commit + S5 files (committed after the run) | plain `python -m pytest -v` (60 + 2 old K3 a tests = 62) and `python -m pytest -m eval tests/test_diarizer.py -v -s`; `THRESHOLD` 0.655 (mic-only K4), first K3 (a) rule | default suite 62/62 passed; `mic_01`–`03` 1 speaker each; `sys_01` 9/16 correct (56.2 %), 1 speaker found (reference 2), short 2/3 | passed (as defined then); `sys_01` merged | `command_outputs/m6_s5_pytest.txt`, `m6_s5_t16.txt`; led to tuning on `sys_01` and option B (D27 S5) |
+| 2026-11-05 | — (M6 S5 threshold tuning, not a test) | same + `tune_diarizer.py` | `tune_diarizer.py` (thresholds 0.50–0.90), then `--sys01` with the first K3 (a) rule, then `--sys01` with option B | mic only: passing 0.60–0.71 → 0.655. `--sys01`, first rule: no threshold passes both (mic_01 splits above 0.71; `sys_01` 2 speakers only at 0.72–0.80). `--sys01`, option B: both pass at 0.72–0.80 → 0.76; taking turns 96.8 % | measurement | `command_outputs/m6_s5_tune.txt`, `m6_s5_tune_sys01.txt`, `m6_s5_tune_sys01_b.txt`; result: D27 S5 (option B, `THRESHOLD` 0.76) |
+| 2026-11-05 | T1.6 | same, final S5 code (committed after the run) | plain `python -m pytest -v` and `python -m pytest -m eval tests/test_diarizer.py -v -s`; `THRESHOLD` 0.76, K3 (a) option B | default suite 60/60 passed (20 diarizer tests); `mic_01`–`03` 1 speaker each; `sys_01` 16/16 (100 %), 2 speakers, short 3/3, not ready 0 | passed | `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`; `sys_01` was tuned on, not an independent check (L14) |

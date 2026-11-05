@@ -64,7 +64,7 @@
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
 - **M5 S1 done (2026-11-04):** pipeline accepts system segments with a diarizer; T1.5 passed (14 tests). **S2 done:** overlap measured, N = 1 kept (D28), L12 added.
 - **Turn-taking measurement (2026-11-04): not passed** (max 6.7 s, 5/28 lines > 5 s, mostly token-cap loops). Fix agreed: `repetition_penalty=1.1` + ASR warm-up (D26 additions).
-- **Next step:** Option 2 (D29): G0 GPU check, then G1 `.venv-gpu`. T3 / T4 later (Zaven, 2026-11-01).
+- **Next step:** G4 (D29): app device + CUDA library loading, then M5 S3. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -213,6 +213,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
 
 **D7 — Skeleton runs on CPU.**
 - Why: GPU needs CUDA/cuDNN setup (time risk). GPU stays a bake-off option. Device is explicit; requesting GPU when unavailable is an error, never a silent fallback.
+- Addition (Zaven, 2026-11-05, D29 / D30): ASR now runs on the MX550 GPU (`cuda`, `int8_float16`); MT and VAD stay on the CPU. The explicit-device rule stays: no GPU → error, never a CPU fallback.
 
 **D8 — VAD: Silero VAD (ONNX, MIT).**
 - Settings: end of phrase = 0.6 s silence; ignore speech < 0.3 s; **hard cap 12 s per segment**.
@@ -414,6 +415,17 @@ requirements-gpu.in  requirements-gpu.txt   # added 2026-11-05 (D29 G1; .venv-gp
 - Alternatives: Option 1, shorter segments (more mid-word cuts, L4, and possibly worse CER); Option 3, accept the misses (breaks the only hard rule).
 - Addition (Zaven, 2026-11-05): G0 done: ctranslate2 4.8.4 sees 1 CUDA device; supported `int8_float16`, `float16`, `int8`, `int8_float32`, `float32`; VRAM 5 / 2048 MiB in use (`command_outputs/m5_gpu_check.txt`).
 - Addition (Zaven, 2026-11-05): G2 result (`command_outputs/m5_g2_diag_asr_gpu.txt`, `m5_g2_diag_asr_cpu.txt`; same session, `.venv-gpu`, mic_01–03, 7 s cap, g+b+c+d1). GPU `int8_float16`: total ASR 22.8 s, max 1.0 s per segment, encoder 0.35 s, loops 3/31, CER 45.0 / 26.7 / 31.9 %, RSS 715 MB, VRAM 420 MB. GPU `float16`: 61.4 s, max 2.6 s, encoder 0.98 s, loops 5/31, CER 49.7 / 38.1 / 34.9 %, VRAM 708 MB. CPU `int8`: 113.2 s, max 4.7 s, encoder 2.0–2.3 s, loops 3/31, CER 46.7 / 24.8 / 31.1 %, RSS 652 MB. Swap +0 MB in all three. **`int8_float16` is used for G3**; `float16` rejected (slower, more loops, worse CER, more VRAM).
+- Addition (Zaven, 2026-11-05): G3 passed (`command_outputs/m5_g3_turns_gpu.txt`; Zoom tab open, plugged in): turn files, N = 1, ASR cuda `int8_float16`: 28 lines, median 1.2 s, p95 1.5 s, max 1.5 s, 0 > 5 s (CPU: max 5.9 s, 3 > 5 s), 1/28 cut (CPU 4/28), peak RSS 729 MB (CPU 881 MB), swap +0 MB, VRAM 420 MB.
+
+**D30 — App ASR on the MX550 GPU; one environment; CUDA libraries loaded in-process (D29 G4).** (Zaven, 2026-11-05)
+- Why: D29 G2 / G3: on the GPU (`int8_float16`) ASR is about 5× faster with the same loops and CER; the turn test max latency fell from 5.9 s (CPU) to 1.5 s.
+- **G4a** ASR always runs on the GPU: `asr.py` `DEVICE = "cuda"`, `COMPUTE_TYPE = "int8_float16"` (was `"cpu"` / `"int8"`); no app CLI option. No GPU → `AsrError` ("GPU required (D30): ctranslate2 sees no CUDA device"); never a CPU fallback (D7, working rule 2). The diagnostic scripts keep `--device` / `--asr-device` for measuring. Alternative: app option `--asr-device cpu|cuda` (rejected: a second setup that is known to break 5 s).
+- **G4b** One environment again: `nvidia-cublas-cu12==12.9.3.13` and `nvidia-cudnn-cu12==9.28.0.42` (the versions G1 resolved) move into `requirements.in`; `requirements.txt` is regenerated; `.venv` gets the libraries; `requirements-gpu.in/.txt` and `.venv-gpu` are removed. App, tests and diagnostic scripts all run in `.venv`.
+- **G4c** CUDA libraries load in-process: before Whisper loads, `asr.py` loads the cuBLAS / cuDNN / nvrtc libraries from the installed NVIDIA packages with `ctypes` (`RTLD_GLOBAL`), so neither `python app.py` nor pytest needs `LD_LIBRARY_PATH` (an export must be set before Python starts, and the tests call `app.main()` inside pytest). A missing library → `AsrError` naming it. Alternative: Zaven exports `LD_LIBRARY_PATH` (README note): the fallback *decision* if G4c fails, never a runtime fallback.
+  - Checked (2026-11-05, `command_outputs/m5_g4_preload.txt`): with `LD_LIBRARY_PATH` unset, all 16 libraries loaded and Whisper transcribed 5 s of mic_01 on cuda `int8_float16` ("PRELOAD OK").
+- **G4d** MT (opus-mt) and VAD (Silero) stay on the CPU.
+- **G4e** Tests: T1.2 adds "`Asr` loads on cuda `int8_float16`"; T1.2 and T6 then need the GPU and fail loudly without it (D22). Exact TEST.md wording comes with the code.
+- **G4f** Records: D7 addition, R18 resolved, R1 mitigation with the G3 numbers.
 
 ---
 
@@ -442,7 +454,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). diag_asr finding (2026-11-01): Whisper small cannot transcribe a full 12 s Armenian segment in ≤ 5 s on this CPU without losing text; FastConformer CTC brought forward (D25). D26 result (2026-11-01): T2 on mic_01 max latency 4.8 s, median 4.1 s; headroom is small (worst lines are cap-cut segments). | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). diag_asr finding (2026-11-01): Whisper small cannot transcribe a full 12 s Armenian segment in ≤ 5 s on this CPU without losing text; FastConformer CTC brought forward (D25). D26 result (2026-11-01): T2 on mic_01 max latency 4.8 s, median 4.1 s; headroom is small (worst lines are cap-cut segments). GPU finding (2026-11-05, D29 / D30): with ASR on the MX550 (cuda `int8_float16`) the turn test had max latency 1.5 s, median 1.2 s, 0/28 lines > 5 s (CPU: max 5.9 s, 3/28) (`command_outputs/m5_g3_turns_gpu.txt`). | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |
@@ -459,7 +471,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 | R15 | Armenian script renders badly in terminal | Checked in M1: text is correct UTF-8; overlap came from Ubuntu Mono lacking Armenian letters. Fix: terminal font DejaVu Sans Mono (setup note in README, M10) | accepted |
 | R16 | Scope creep | Working rule 1; Future ideas section | accepted |
 | R17 | RAM: only ~2.4 GB free, swap already used → swapping breaks 5 s | Load test (D2); RAM check in M1; close unneeded apps before demo; light MT first (D5) | accepted |
-| R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h. GPU work brought forward to M5 (D29); the 1 h time-box is lifted (Zaven, 2026-11-05) | accepted |
+| R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h. GPU work brought forward to M5 (D29); the 1 h time-box is lifted (Zaven, 2026-11-05). Resolved by D29 / D30 (2026-11-05): CUDA libraries from pip, loaded in-process; one wrong library path cost one strike | resolved |
 | R19 | 20 h budget overrun | Hours per milestone; Zaven decides cuts; cut order M9 → M8 | accepted |
 
 ---

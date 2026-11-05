@@ -2,7 +2,7 @@
 
 > **How to use this file.** Every test entry, every pass criterion and every status change is agreed with Zaven **before** it is written here (working rule 10). Zaven runs all tests on his laptop; when Claude needs the output, Zaven saves it to `command_outputs/<name>.txt` and sends the path (rules 8–9). Decisions referenced as D# are in `DECISIONS.md`.
 
-- Created: 2026-10-29 · Last updated: 2026-11-04
+- Created: 2026-10-29 · Last updated: 2026-11-05
 
 ---
 

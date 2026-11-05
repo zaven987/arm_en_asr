@@ -1,7 +1,0 @@
-# requirements-gpu.in: direct deps of the GPU measuring env .venv-gpu (D29 G1). Edited by hand.
-# requirements-gpu.txt is generated from this by `uv pip compile`. Never edit it by hand.
-# Target: Python 3.10 (D14). Used only in .venv-gpu, never in .venv, until a GPU decision (D29 G4).
-
--r requirements.txt          # exactly the app env pins, so CPU and GPU runs differ only in the device
-nvidia-cublas-cu12           # cuBLAS for CUDA 12: needed by ctranslate2 on the GPU (faster-whisper 1.2.1 docs)
-nvidia-cudnn-cu12==9.*       # cuDNN 9 for CUDA 12: needed for Whisper's convolution layers on the GPU

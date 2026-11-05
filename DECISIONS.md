@@ -293,7 +293,6 @@ DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
 pytest.ini                # added 2026-10-31: pythonpath = src, markers hardware / slow excluded by default via addopts;
                           #   app.py adds src/ to sys.path itself (no packaging, no pyproject.toml)
 requirements.in  requirements-convert.in  requirements-convert.txt     # added 2026-10-29 (D14, D23)
-requirements-gpu.in  requirements-gpu.txt   # added 2026-11-05 (D29 G1; .venv-gpu, gitignored)
 ```
 
 **D17 — Evaluation clips: each clip has one device role.**

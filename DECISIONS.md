@@ -66,7 +66,8 @@
 - **Turn-taking measurement (2026-11-04): not passed** (max 6.7 s, 5/28 lines > 5 s, mostly token-cap loops). Fix agreed: `repetition_penalty=1.1` + ASR warm-up (D26 additions).
 - **Latency fix on GPU done (2026-11-05):** D29 / D30: ASR on the MX550 (cuda `int8_float16`); turn test max 1.8 s on the app path (`command_outputs/m5_g4_turns_app.txt`); 32 tests pass.
 - **M5 S3 done (2026-11-05):** two-device capture (`Capture`, E1 session offset, E2 / E3, F1–F8); `--system` still refused (E4); `ParecSource` stop/start race fixed (F8); 41 tests pass (`command_outputs/m5_s3b_pytest.txt`).
-- **Next step:** M6 S4: speaker-embedding model choice (`sherpa-onnx` first, 30-minute install time-box; D27). T3 / T4 later (Zaven, 2026-11-01).
+- **M6 S4 done (2026-11-05):** speaker-embedding model chosen: `sherpa-onnx` 1.13.8 + WeSpeaker ResNet34 on the CPU; CAM++ rejected; short-segment length 2.0 s (D27 J1–J9; `command_outputs/m6_s4_embed_resnet34.txt`, `m6_s4_embed_campplus.txt`).
+- **Next step:** M6 S5: `diarizer.py` + T1.6 (D27). T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -289,6 +290,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   diag_asr.py (latency fix: Whisper speed / loop variants, runs in .venv; added 2026-11-01)
                           #   diag_two_devices.py (M5 S2: two devices at once, N / threads variants; added 2026-11-04)
                           #   make_turns.py (M5: turn-taking WAVs turns_mic / turns_sys from mic_01 + sys_01; added 2026-11-04)
+                          #   diag_embed.py (M6 S4: speaker-embedding measurement on mic_01-03 + sys_01; added 2026-11-05)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -406,6 +408,17 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **F7** (E3): when a device is lost, its own unfinished segment is dropped (not flushed); the other device's open segment is still drained. (Zaven, 2026-11-05)
   - **F8** `ParecSource.stop()` and the start of `parec` share a lock; a stop that comes before `parec` has started means `parec` never starts. Why: T6 `test_unknown_stdin_command_keeps_running` hung (`command_outputs/m5_s3_pytest.txt`): `quit` came before `parec` had started, so `parec` started afterwards and was read forever. The race was already there before S3; it was hit now, probably because the app process is larger since D30 and starting `parec` takes longer. T1.1 adds a test for it.
   - Tests: T1.1 gets stub-based checks for F1 (offset, no offset), the shared id counter, E2, E3 and F2's thread names / duplicate device; T6 gets "`--system-wav` still refused" (replaced in S6) and "file mode, mic only, ends by itself with exit 0". TEST.md wording is agreed after the run.
+- Addition (Zaven, 2026-11-05, S4, J1–J9): speaker-embedding model.
+  - **J1** `sherpa-onnx==1.13.8` in `requirements.in` (pulls in `sherpa-onnx-core==1.13.8`; no torch; CPU wheels). Last 1.x with Python 3.10 wheels; 2.0.x not used (new major version; no 3.10 Linux wheel seen for 2.0.1). Installed without problems; onnxruntime 1.23.2 (Silero) and sherpa-onnx load in one process (`command_outputs/m6_s4_compile.txt`, `m6_s4_install.txt`, `m6_s4_import.txt`).
+  - **J2** model from Hugging Face `csukuangfj/speaker-embedding-models` (the sherpa-onnx maintainer's copy of the release files) at revision `0743f301363dec56491a490f6d6cbc9d67f9a3bf`, fetched by `scripts/download_models.py` into `models/speaker-embedding/` and checked against its SHA-256 (fails loudly on a mismatch). Licence: WeSpeaker pretrained models follow their dataset's licence; VoxCeleb = **CC-BY 4.0** (for the README).
+  - **J3** CPU, 1 thread (ASR keeps the GPU).
+  - **J4** stop rules (no build from source, no torch or other heavy package, install and import must work); the 30-minute time-box was dropped (Zaven). None was hit.
+  - **J5** `scripts/diag_embed.py --model <file>`: real Silero + Segmenter (7 s cap) on `mic_01`–`03` and `sys_01`; prints time per embedding, RSS, pair similarities, a centroid check per speech-length bucket and a threshold table (mic only).
+  - **J7 Model: WeSpeaker ResNet34** (`wespeaker_en_voxceleb_resnet34.onnx`, 26 534 365 bytes, SHA-256 `5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94`, embedding size 256). Results (`command_outputs/m6_s4_embed_resnet34.txt`): 47/47 segments embedded; 235 ms median, 241 ms max per embedding (1 thread); model +74 MB RSS (script peak 218 MB). mic: nearest centroid wrong 0/31; segments ≥ 2 s: same-speaker pairs min 0.729, different-speaker pairs max 0.758; at threshold 0.75: 30/31 join their own speaker, 31/31 stay out of the other. sys_01 (report only, R13): wrong 0/16, smallest margin on a long segment 0.018.
+    - **CAM++ rejected** (`wespeaker_en_voxceleb_CAM++.onnx`, `command_outputs/m6_s4_embed_campplus.txt`): about 3× faster (82 ms median) and +50 MB, but nearest centroid wrong 4/31 on mic and 5/16 on sys_01; same- and different-speaker similarities overlap almost completely (segments ≥ 2 s: same min 0.422, different max 0.916). Removed from `download_models.py`.
+    - Note for S5: on sys_01 (one recording, two speakers) different-speaker similarity is much higher (centroid "other" 0.57–0.85) than between the three separate mic recordings (0.38–0.73), so a threshold tuned on the mic clips may sit close to the different-speaker range of a real call. T1.6 shows the effect; sys_01 is still not tuned on (R13).
+  - **J8 Short-segment length: 2.0 s of speech** (end − start; replaces "about 1 s" in "M6 clustering (S5)" above), for the S5 rule above (a short segment joins the nearest existing speaker, never creates a speaker, never updates a centroid). Why: every mic segment ≥ 2 s scored ≥ 0.846 against its own speaker's centroid; below 2 s the scores were 0.53–0.87 (4 segments), close to the threshold range. Stability is preferred over catching a new speaker's very short turns (Zaven). Cost: a new speaker whose first turns are all < 2 s is put into an existing speaker until they say something longer. Alternative: 1.0 s (rejected: more segments allowed to create a speaker, near the threshold).
+  - **J9** records: this addition, D16, section 3, TEST.md results row.
 
 **D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)
 - What: the app keeps `N_ASR_WORKERS = 1` and `CPU_THREADS = 4` (D1, D3 A1).

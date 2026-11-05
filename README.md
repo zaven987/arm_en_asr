@@ -3,7 +3,7 @@
 A Python terminal app that listens to a microphone, writes down what is said in
 Eastern Armenian, translates it into English, and prints both live. Each line
 shows when the speech started (time since the session began) and how long it
-took to appear. Everything runs locally on the laptop's CPU: after a one-time
+took to appear. Everything runs locally on the laptop (speech recognition on its NVIDIA GPU, the rest on the CPU): after a one-time
 model download, it needs no internet and no cloud service.
 
     [00:00:03] Me:  Բարև, ինչպե՞ս ես
@@ -55,9 +55,9 @@ Status on 2026-11-01. Milestone numbers (M#) and decision numbers (D#) refer to
 - **[uv](https://docs.astral.sh/uv/)** to create the Python environments
   (tested with uv 0.13.6).
 - **Python 3.10.12.** The pinned packages need 3.10 (D14).
-- **CPU only.** No GPU is used (D7).
+- **An NVIDIA GPU with CUDA 12 support.** Speech recognition (Whisper) runs on the GPU (D30); tested on a GeForce MX550 (2 GB) with driver 580. The CUDA libraries (cuBLAS, cuDNN 9) come as pip packages in `requirements.txt` and the app loads them itself, so no CUDA toolkit install and no `LD_LIBRARY_PATH` are needed. Without a usable GPU the app stops with `GPU required (D30): ctranslate2 sees no CUDA device`; it never falls back to the CPU. VAD and translation run on the CPU.
 - **Disk:** about 0.9 GB for the models in `models/`, plus the two Python
-  environments. The conversion environment contains a CPU-only PyTorch.
+  environments (the app environment holds about 2.5 GB of NVIDIA CUDA libraries). The conversion environment contains a CPU-only PyTorch.
 - **RAM:** the app needs about 1 GB of free RAM. This is an estimate: a peak of
   0.83 GB was measured with VAD + ASR loaded, before MT was added. The full
   measurement (load test T4) has not been run.
@@ -267,7 +267,7 @@ against the alternatives on our data yet.
 | Stage | Model | How it runs | Why |
 |---|---|---|---|
 | VAD (finds speech) | Silero VAD v6.2.1 (ONNX) | onnxruntime, CPU. A phrase ends after 0.6 s of silence; speech < 0.3 s is ignored; segments are capped at 7 s (D8, D26) | small, accurate, needs no PyTorch; taken from the official repo at a pinned tag (D24) |
-| ASR (Armenian speech → text) | Whisper small, via faster-whisper | CTranslate2 int8, CPU, 4 threads, language fixed to `hy`; greedy decoding (`beam_size=1`), `temperature=0`, no timestamps, token cap (D3, D26) | about 0.5 GB of RAM and known to run; accuracy on Armenian is weak, which we accept for now |
+| ASR (Armenian speech → text) | Whisper small, via faster-whisper | CTranslate2 `int8_float16` on the GPU (D30), language fixed to `hy`; greedy decoding (`beam_size=1`), `temperature=0`, no timestamps, token cap (D3, D26) | about 0.4 GB of GPU memory; about 5× faster than on the CPU (D29); accuracy on Armenian is weak, which we accept for now |
 | MT (Armenian → English) | Helsinki-NLP opus-mt-hy-en (Marian) | converted to CTranslate2 int8, CPU, 2 threads, `beam_size=2`, `no_repeat_ngram_size=3` (D5) | about 0.1 GB, so everything fits in the free RAM next to a browser video call |
 
 **Why the ASR settings look like this (D26).** The first settings (beam 5,
@@ -283,7 +283,7 @@ token, and Armenian needs about 16 tokens per second of speech. To stay under
 The cap is set so it only stops repeats, not normal speech. When it stops a
 line, the line ends with ` ...` (L11). The price is accuracy: CER on our 3 mic
 clips is 36–59 % with these settings, against 20–35 % with beam 5 on 12 s
-segments, which broke the 5 s limit.
+segments, which broke the 5 s limit. These settings were tuned on the CPU. Since D30 the same settings run on the GPU, where the slowest segment takes about 1 s instead of 4.7 s.
 
 **Why `no_repeat_ngram_size=3` for MT (D5).** opus-mt itself (not our
 conversion) can fall into a loop on some inputs, e.g. «6-6-6-…-a-a-a-…». This
@@ -297,7 +297,7 @@ when the speaker really did.
 |---|---|---|
 | NVIDIA `stt_hy_fastconformer_hybrid_large_pc`, CTC head (D4, D25) | in the M7 bake-off; brought forward for the latency fix, then set aside for time | Armenian-only, ~115 M parameters, FLEURS WER ≈ 13 %. A CTC model cannot repeat itself in a loop, and its cost depends only on the audio length, so it should fix the latency problem at the root |
 | BuzzASR/armenian, quantized (Whisper large-v3 fine-tune) (D4) | in the M7 bake-off, time-boxed to 30 min | best Armenian accuracy found (FLEURS CER ≈ 3.7 %), but likely too slow and too big for this laptop |
-| Whisper large-v3-turbo on the MX550 GPU (D4, D7) | in the M7 bake-off | speed unknown; GPU setup costs time, so the app is CPU-only for now |
+| Whisper large-v3-turbo on the MX550 GPU (D4, D7) | in the M7 bake-off | speed unknown on this GPU; Whisper small runs on it since D30 |
 | Meta Omnilingual ASR CTC 300M (D4) | in the M7 bake-off | Armenian score unknown; needs fairseq2 |
 | NLLB-200-distilled-600M for MT (D5) | in the M7 bake-off | usually better translations, but ~0.6–0.7 GB of RAM |
 | One speech → English model, e.g. SeamlessM4T (D6) | rejected | we must show the Armenian text anyway, and SeamlessM4T is too big for this laptop |
@@ -359,6 +359,8 @@ All measured on the development laptop ([Requirements](#requirements)), on the C
 current settings (D26) unless marked otherwise. The raw outputs stay on the
 development laptop and are not in the repository (`command_outputs/`, working
 rule 14); the key numbers are recorded in DECISIONS.md and TEST.md.
+
+**Since D30 (2026-11-05) ASR runs on the GPU.** The turn-taking test (two devices, 164 s, 28 lines) gave median 1.3 s, max 1.8 s and 0 lines over 5 s, against max 5.9 s on the CPU (D29, D30). The CPU tables below are kept for comparison.
 
 ### Latency (T2, 2026-11-01, commit `ad8b730`)
 
@@ -440,7 +442,7 @@ L-numbers refer to DECISIONS.md section 12.
 - **Echo** (L1, will not fix). With speakers instead of headphones, call audio
   leaks into the mic and shows up as extra "Me" lines. Use headphones.
 - **Overlapping speech** (L2). No special handling.
-- **Tested on one laptop only** (L9). Ubuntu 22.04 with PulseAudio, CPU only.
+- **Tested on one laptop only** (L9). Ubuntu 22.04 with PulseAudio and an NVIDIA MX550.
   Other setups, PipeWire, and a live video call running at the same time have
   not been verified.
 - **Out of scope by design:** no GUI, no installer, transcripts are not saved

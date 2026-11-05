@@ -65,7 +65,8 @@
 - **M5 S1 done (2026-11-04):** pipeline accepts system segments with a diarizer; T1.5 passed (14 tests). **S2 done:** overlap measured, N = 1 kept (D28), L12 added.
 - **Turn-taking measurement (2026-11-04): not passed** (max 6.7 s, 5/28 lines > 5 s, mostly token-cap loops). Fix agreed: `repetition_penalty=1.1` + ASR warm-up (D26 additions).
 - **Latency fix on GPU done (2026-11-05):** D29 / D30: ASR on the MX550 (cuda `int8_float16`); turn test max 1.8 s on the app path (`command_outputs/m5_g4_turns_app.txt`); 32 tests pass.
-- **Next step:** M5 S3 (`app.py` + `audio_capture.py`: two devices, E1–E3; `--system` still refused). T3 / T4 later (Zaven, 2026-11-01).
+- **M5 S3 done (2026-11-05):** two-device capture (`Capture`, E1 session offset, E2 / E3, F1–F8); `--system` still refused (E4); `ParecSource` stop/start race fixed (F8); 41 tests pass (`command_outputs/m5_s3b_pytest.txt`).
+- **Next step:** M6 S4: speaker-embedding model choice (`sherpa-onnx` first, 30-minute install time-box; D27). T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---

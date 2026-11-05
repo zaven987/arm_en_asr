@@ -55,14 +55,20 @@
 
 #### T1.1 — `audio_capture` + VAD (file input)
 - **Purpose:** VAD produces correct segments from a file input.
-- **Linked:** D8, D10, D26, R7, R12.
-- **Input:** speech fixture; silence fixture; ≥ 12 s continuous-speech fixture.
+- **Linked:** D8, D10, D26, D27, F1, F2, F7, F8, R7, R12.
+- **Input:** speech fixture; silence fixture; ≥ 12 s continuous-speech fixture; stub VAD and stub sources for the S3 checks (no model).
 - **Run:** `python -m pytest tests/test_audio_capture.py -v`
 - **Pass:**
   - Speech fixture → at least 1 segment, each 0.3–7 s long, 16 kHz mono.
   - Silence fixture → 0 segments.
   - Continuous-speech fixture → cut at the 7 s cap (D8, D26; was 12 s until 2026-11-01).
-- **Status:** passed (2026-10-31, see results log)
+  - Session offset (D27 E1, F1): with `session_start`, `start` / `end` = sample time + (first chunk arrival − 32 ms − `session_start`), and `end_wall` doesn't change. Without `session_start` the offset is 0.
+  - Two Segmenters on one id counter give unique ids across devices.
+  - `Capture`, E2: `wake` is set only after every input has ended.
+  - `Capture`, E3: one input failing sets `wake` at once and the error is kept. `stop()` ends the other input, and that input's open segment is still emitted.
+  - `Capture` names its threads `capture-mic` / `capture-system`. The same device given twice → `CaptureError`.
+  - `ParecSource` stopped before it starts → `parec` never starts and nothing is read (F8).
+- **Status:** passed (2026-11-05, see results log)
 
 #### T1.2 — `asr`
 - **Purpose:** ASR runs and returns Armenian text. This is a sanity check, not a quality bar.
@@ -174,7 +180,7 @@
 
 ### T6 — CLI fail-loudly checks
 - **Purpose:** errors are clear and the app never silently falls back.
-- **Linked:** working rule 2, D11, D15.
+- **Linked:** working rule 2, D11, D15, D27.
 - **Milestone:** M3.
 - **Run:** `python -m pytest tests/test_cli.py -v`
 - **Pass, in all cases:**
@@ -182,7 +188,9 @@
   - **Missing model** → the app exits with a non-zero code and a clear error naming the model. No download is attempted.
   - **Unknown stdin command** (any text other than `quit`) → prints "unknown command" and keeps running.
   - **`quit` + Enter** → clean shutdown with exit code 0. All `parec` subprocesses and worker threads are stopped.
-- **Status:** passed (2026-11-01, see results log)
+  - Until S6: a valid `--system-wav` → exit 1 with "refused until the diarizer is connected" (D27 E4; replaced in S6).
+  - File mode with the mic only (a 0.5 s silent WAV) → the app ends by itself with exit 0, and the last message is `stopped` (E2). Needs the GPU (D30).
+- **Status:** passed (2026-11-05, see results log)
 
 ---
 
@@ -210,3 +218,6 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-05 | — (M5 turn-taking measurement on GPU, D29 G3; pre-check for T2) | 7647ae5 (same code, committed after the run) | turn files (164 s), real-time feed, N = 1, ASR on MX550 cuda int8_float16 (.venv-gpu), MT / VAD on CPU, repetition_penalty 1.1, warm-up; load average 0.37 at start; Zoom tab open, plugged in | 28 lines (mic 12, system 16); median 1.2 s, p95 1.5 s, max 1.5 s; 0 lines > 5 s; 1/28 cut; peak RSS 729 MB; swap 1641 → 1641 MB; VRAM 420 MB | passed (≤ 5 s rule) | `command_outputs/m5_g3_turns_gpu.txt` |
 | 2026-11-05 | T1.2 | d37240b | plain `python -m pytest -v -s` run in .venv, no LD_LIBRARY_PATH; ASR on cuda int8_float16 (D30) | 5/5 T1.2 tests passed (Armenian text; missing model → clear error; token_cap follows D26; warm_up runs; Asr loads on cuda int8_float16); whole default suite 32 passed in 9.77 s | passed | `command_outputs/m5_g4_pytest.txt` |
 | 2026-11-05 | — (M5 turn-taking, app ASR path in .venv, D30; pre-check for T2) | d37240b (same code, committed after the run) | turn files (164 s), real-time feed, N = 1, app setting (cuda int8_float16, CUDA libraries loaded in-process, no LD_LIBRARY_PATH), MT / VAD on CPU; load average 1.69 at start; Zoom tab open, plugged in | 28 lines (mic 12, system 16); median 1.3 s, p95 1.7 s, max 1.8 s; 0 lines > 5 s; 1/28 cut; peak RSS 878 MB; swap 1547 → 1546 MB; VRAM 420 MB | passed (≤ 5 s rule) | `command_outputs/m5_g4_turns_app.txt` |
+| 2026-11-05 | T6 | fa4588a (same code + F8 fix, committed after the run) | plain `python -m pytest -v -s` run; S3 code before F8; live on a real PulseAudio source, no person | 6/7 T6 tests passed; `test_unknown_stdin_command_keeps_running` hung (did not stop within 60 s after `quit`: stop/start race in `ParecSource`, F8); whole default suite 39 passed, 1 failed | not passed | `command_outputs/m5_s3_pytest.txt` |
+| 2026-11-05 | T1.1 | fa4588a | plain `python -m pytest -v -s` run; S3 (F1, F2) + F8 | 10/10 T1.1 tests passed (3 fixture tests; session offset and no offset; shared ids; Capture E2, E3, thread names / duplicate device; ParecSource stopped before start); whole default suite 41 passed in 10.01 s | passed | `command_outputs/m5_s3b_pytest.txt` |
+| 2026-11-05 | T6 | fa4588a | same run; live on a real PulseAudio source, no person | 7/7 T6 tests passed (the earlier 5, plus `--system-wav` still refused and file mode with the mic only exits 0); the failed test also passed 5/5 in a row on its own | passed | `command_outputs/m5_s3b_pytest.txt`, `m5_s3_f8_stdin_x5.txt` |

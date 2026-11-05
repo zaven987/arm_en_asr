@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-05 (M6 S7a)
+- Created: 2026-10-26 · Last updated: 2026-11-05 (M7 start)
 
 ---
 
@@ -46,7 +46,7 @@
 
 ## 3. Current status
 
-- **Current milestone:** M10 — README pass (D27 S7c), then the final test run and TEST.md statuses (Zaven, 2026-11-05). M5 and M6 done (2026-11-05). M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
+- **Current milestone:** M7 — ASR/MT bake-off. First step: a `beam_size` sweep on Whisper small, to see which beam sizes keep latency roughly under 5 s (Zaven, 2026-11-05). M6 S7c (README sections) postponed (Zaven, 2026-11-05); M10 (README, final test run, TEST.md statuses) afterwards. M5 and M6 done (2026-11-05). M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
 - **M5 + M6 plan agreed (2026-11-04):** steps S1–S7 and their rules in D27.
 - **README done (2026-11-01):** `README.md` written and committed (`496adf4`).
 - **Latency fix done (2026-11-01):** D26 (Whisper greedy, no timestamps, token cap with ` ...`, VAD cap 7 s); T2 on mic_01 passed: max 4.8 s (`command_outputs/d26_t2_mic01.txt`).
@@ -70,7 +70,7 @@
 - **M6 S5 done (2026-11-05):** `diarizer.py` (`SpeakerClusters`, `Embedder`, `Diarizer`; K3 a option B; `THRESHOLD` 0.76, tuned on `mic_01`–`03` + `sys_01`) + `tests/test_diarizer.py`; 60 tests pass; T1.6 passed: each solo mic clip 1 speaker, `sys_01` 16/16 with 2 speakers (tuned on it, so not an independent check; L14) (D27 S5; `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`).
 - **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
 - **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
-- **Next step:** M6 S7c: README sections (handover 010 list), drafted in full for Zaven's review. T3 / T4 later (Zaven, 2026-11-01).
+- **Next step:** M7 `beam_size` sweep (beams 1, 2, 3, 5; `scripts/diag_asr.py`). M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---

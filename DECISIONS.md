@@ -64,7 +64,8 @@
 - **M0 done (2026-10-29):** questions asked and answered; decisions D1–D22 agreed (incl. D4 BuzzASR time-box); this file and TEST.md (tests T1.1–T1.6, T2–T6, all "not run") written and committed by Zaven; handovers 001 and 002 written.
 - **M5 S1 done (2026-11-04):** pipeline accepts system segments with a diarizer; T1.5 passed (14 tests). **S2 done:** overlap measured, N = 1 kept (D28), L12 added.
 - **Turn-taking measurement (2026-11-04): not passed** (max 6.7 s, 5/28 lines > 5 s, mostly token-cap loops). Fix agreed: `repetition_penalty=1.1` + ASR warm-up (D26 additions).
-- **Next step:** G4 (D29): app device + CUDA library loading, then M5 S3. T3 / T4 later (Zaven, 2026-11-01).
+- **Latency fix on GPU done (2026-11-05):** D29 / D30: ASR on the MX550 (cuda `int8_float16`); turn test max 1.8 s on the app path (`command_outputs/m5_g4_turns_app.txt`); 32 tests pass.
+- **Next step:** M5 S3 (`app.py` + `audio_capture.py`: two devices, E1–E3; `--system` still refused). T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -381,7 +382,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **S4** embedding model choice (see M6 below).
   - **S5** `diarizer.py` + T1.6 (`eval` marker, D22).
   - **S6** app passes the real diarizer; the `--system` refusal is removed; T6 still passes, plus one test that a short `--system-wav` run is accepted and exits 0.
-  - **S7** T2 re-run `app.py --mic-wav eval/clips/mic_01.wav --system-wav eval/clips/sys_01.wav`, demo conditions; then statuses, DECISIONS / TEST updates and the README sections listed in handover 010.
+  - **S7** T2 re-run `app.py --mic-wav eval/clips/mic_01.wav --system-wav eval/clips/sys_01.wav` (replaced by the turn files `turns_mic.wav` + `turns_sys.wav`, see the addition after S2 below; Zaven, 2026-11-05), demo conditions; then statuses, DECISIONS / TEST updates and the README sections listed in handover 010.
 - **E1 Session clock with two devices** (changes D11 Q1 "the session clock starts at the first captured sample"): one shared start time is taken just before the capture threads start. Each Segmenter adds its own offset = arrival of its first chunk − one window (32 ms) − start time; `start` / `end` stay counted by samples (D12) plus that offset. Why: two `parec` processes (or two WAV threads) do not start at the same instant. Caveat: `parec` buffering enters the offset, so it is approximate (tens of ms); the display truncates to whole seconds.
 - **E2 File mode with WAVs of different length:** the session ends when **every** input has ended and every line is printed (exit 0); the shorter file's capture thread just finishes first.
 - **E3 Lost device:** one device lost → the whole session ends: what was captured is drained, then exit 1 with `ERROR: …` (as D11).
@@ -394,6 +395,14 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **T1.6 scoring:** each segment gets the reference speaker (`eval/meta/sys_01.csv`) it overlaps most in time; segments with no overlap are counted and left out. Speaker numbers are matched to reference names by the best one-to-one mapping. Reported: % correct, number of speakers found, short segments separately.
 - Time: Zaven, 2026-11-04: time is not the constraint for M5 / M6.
 - Addition (Zaven, 2026-11-04, after S2): S2 result (`command_outputs/m5_s2_two_devices.txt`; Zoom tab open, plugged in): with `mic_01` + `sys_01` talking at the same time, every variant breaks 5 s (max 23.0 / 23.2 / 18.2 s for n1t4 / n2t4 / n2t2) because segments arrive faster (≈ one per 3.3 s) than the pipeline finishes them (≈ one per 3.8 s), so a queue builds up. This overlap case is recorded as a measurement and known limitation L12, **not** as T2. A realistic **turn-taking** test is added before S3: `scripts/make_turns.py` builds `eval/clips/turns_mic.wav` + `turns_sys.wav` (gitignored): turns of about 10–15 s cut at the quietest 100 ms, alternating `sys_01` / `mic_01`, 1 s silence between turns, the other track silent. It is measured now with `diag_two_devices.py --mic … --system … --variants n1t4` (new options); pass = every line ≤ 5 s. **Pass → go straight to S3. Fail → stop and decide together on reducing the token-cap loops.** S7's T2 re-run uses the turn files instead of `mic_01` + `sys_01`.
+- Addition (Zaven, 2026-11-05, S3, F1–F6):
+  - **F1** (E1) `Segmenter` takes an optional `session_start`. On its first chunk it sets offset = arrival − one window (32 ms) − `session_start`; `start` / `end` = sample index / 16 000 + offset; `end_wall` unchanged. Without `session_start` the offset is 0 (the clock starts at that Segmenter's first sample, as before); the T1.1 file tests and the diagnostic scripts keep using that. Alternative: required argument (rejected: changes the diag scripts for no gain).
+  - **F2** (E2, E3) new `Capture` class in `audio_capture.py`: one thread per input, named `capture-<device>`, each running `run_capture`. A thread that ends normally sets the wake event only when every thread has ended (E2); an error is stored and sets it at once (E3). `stop()` stops every source and joins every thread. The same device given twice → `CaptureError` (D11). Why: the two-device paths are tested with stubs now, while the app still refuses `--system` (E4). Alternative: the loop inside `app.py` (rejected: E2 / E3 untested until S6).
+  - **F3** `app.py`: inputs in the order mic, system; one `SileroVad` per input and one shared id counter; `session_start` is taken just before the Segmenters are made and `Capture.start()`; shutdown = `capture.stop()`, then `pipeline.close()`. Exit codes unchanged.
+  - **F4** one ready line: `listening on mic: <name>, system: <name> — …` / `playing mic: <file>, system: <file> at real-time speed — …`.
+  - **F5** E4 unchanged; the refusal message now says the system input is refused until the diarizer is connected (step S6).
+  - **F6** docstrings: file mode ends when every file has ended.
+  - Tests: T1.1 gets stub-based checks for F1 (offset, no offset), the shared id counter, E2, E3 and F2's thread names / duplicate device; T6 gets "`--system-wav` still refused" (replaced in S6) and "file mode, mic only, ends by itself with exit 0". TEST.md wording is agreed after the run.
 
 **D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)
 - What: the app keeps `N_ASR_WORKERS = 1` and `CPU_THREADS = 4` (D1, D3 A1).

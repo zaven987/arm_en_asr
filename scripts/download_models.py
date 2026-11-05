@@ -1,4 +1,4 @@
-"""One-time model download and conversion (D15, D23, D24).
+"""One-time model download and conversion (D15, D23, D24; speaker embeddings D27 S4 J2).
 
 Run once from the repo root, with .venv active and internet on:
     python scripts/download_models.py
@@ -14,7 +14,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download, snapshot_download
 
 ROOT = Path(__file__).resolve().parent.parent  # repo root (script lives in scripts/)
 MODELS = ROOT / "models"
@@ -48,6 +48,17 @@ SILERO_URL = (
     f"{SILERO_TAG}/src/silero_vad/data/silero_vad.onnx"
 )
 SILERO_PATH = MODELS / "silero_vad.onnx"
+
+# Speaker-embedding model for the diarizer (D9, D27 S4 J2, J7): WeSpeaker ResNet34, trained on
+# VoxCeleb, CC-BY 4.0. Pinned Hugging Face revision; the file is checked against its SHA-256.
+# CAM++ was measured in S4 and rejected (J7).
+EMBED_REPO = "csukuangfj/speaker-embedding-models"
+EMBED_REV = "0743f301363dec56491a490f6d6cbc9d67f9a3bf"
+EMBED_DIR = MODELS / "speaker-embedding"
+EMBED_FILES = {
+    "wespeaker_en_voxceleb_resnet34.onnx":
+        "5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94",
+}
 
 
 def fail(msg: str) -> None:
@@ -129,12 +140,39 @@ def download_silero() -> None:
     print(f"[silero] {len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()}")
 
 
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def download_speaker_embedding() -> None:
+    EMBED_DIR.mkdir(parents=True, exist_ok=True)
+    for name, expected in EMBED_FILES.items():
+        path = EMBED_DIR / name
+        if path.exists():
+            print(f"[embed] already present, checking: {path}")
+        else:
+            print(f"[embed] downloading {EMBED_REPO}@{EMBED_REV[:8]} {name} ...")
+            hf_hub_download(EMBED_REPO, name, revision=EMBED_REV, local_dir=EMBED_DIR)
+            if not path.exists():
+                fail(f"[embed] {name} missing after download in {EMBED_DIR}")
+        got = sha256_file(path)
+        if got != expected:
+            fail(f"[embed] SHA-256 mismatch for {path}: got {got}, expected {expected}; "
+                 "delete the file and rerun")
+        print(f"[embed] {name}: {path.stat().st_size} bytes, sha256 OK")
+
+
 def main() -> None:
     MODELS.mkdir(exist_ok=True)
     download_whisper()
     download_opus_source()
     convert_opus()
     download_silero()
+    download_speaker_embedding()
     print("All models ready in", MODELS)
 
 

@@ -21,7 +21,7 @@ COMPUTE_TYPE = "int8_float16"  # D30 G4a / D29 G2: ~5x faster than CPU int8, sam
 CUDA_LIB_PACKAGES = ("cuda_nvrtc", "cublas", "cudnn")  # D30 G4c: lib folders under nvidia/
 CPU_THREADS = 4   # A3: leave cores for capture + MT; tuned in M4 (T4). No effect on cuda (D30)
 NUM_WORKERS = 1   # A3 / D1: default N = 1; must equal the pipeline's ASR worker count (P9)
-BEAM_SIZE = 1     # D26: greedy decoding, about half the decoding time of beam 5 (latency fix)
+BEAM_SIZE = 5     # D32: beam 5 (was 1, D26): mean CER 41.5 -> 32.4 %, loops 7 -> 2 of 47, max ASR 1.6 s on the GPU
 TEMPERATURE = 0.0  # D3 (Zaven, 2026-11-01): decode once, no temperature fallback retries;
                    # the 5 s latency rule comes before a small loss in accuracy (R1)
 

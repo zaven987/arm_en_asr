@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-05 (M7 start)
+- Created: 2026-10-26 · Last updated: 2026-11-05 (M7 D32)
 
 ---
 
@@ -46,7 +46,7 @@
 
 ## 3. Current status
 
-- **Current milestone:** M7 — ASR/MT bake-off. First step: a `beam_size` sweep on Whisper small, to see which beam sizes keep latency roughly under 5 s (Zaven, 2026-11-05). M6 S7c (README sections) postponed (Zaven, 2026-11-05); M10 (README, final test run, TEST.md statuses) afterwards. M5 and M6 done (2026-11-05). M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
+- **Current milestone:** M7 — ASR/MT bake-off. First step: a `beam_size` sweep on Whisper small, to see which beam sizes keep latency roughly under 5 s (Zaven, 2026-11-05); done. FastConformer was brought in (D31) and stopped the same day; ASR stays Whisper small with beam 5 (D32). M6 S7c (README sections) postponed (Zaven, 2026-11-05); M10 (README, final test run, TEST.md statuses) afterwards. M5 and M6 done (2026-11-05). M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
 - **M5 + M6 plan agreed (2026-11-04):** steps S1–S7 and their rules in D27.
 - **README done (2026-11-01):** `README.md` written and committed (`496adf4`).
 - **Latency fix done (2026-11-01):** D26 (Whisper greedy, no timestamps, token cap with ` ...`, VAD cap 7 s); T2 on mic_01 passed: max 4.8 s (`command_outputs/d26_t2_mic01.txt`).
@@ -70,7 +70,8 @@
 - **M6 S5 done (2026-11-05):** `diarizer.py` (`SpeakerClusters`, `Embedder`, `Diarizer`; K3 a option B; `THRESHOLD` 0.76, tuned on `mic_01`–`03` + `sys_01`) + `tests/test_diarizer.py`; 60 tests pass; T1.6 passed: each solo mic clip 1 speaker, `sys_01` 16/16 with 2 speakers (tuned on it, so not an independent check; L14) (D27 S5; `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`).
 - **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
 - **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
-- **Next step:** M7 `beam_size` sweep (beams 1, 2, 3, 5; `scripts/diag_asr.py`). M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
+- **M7 beam sweep done (2026-11-05):** Whisper small, cuda `int8_float16`, beams 1 / 2 / 3 / 5 on `mic_01`–`03` + `sys_01` (47 segments; `command_outputs/m7_beam_sweep.txt`, `diag_asr.py` variants b2 / b3): ASR max per segment 1.0 / 1.3 / 1.4 / 1.6 s, loops 7 / 3 / 2 / 2 of 47, mean CER 41.5 / 36.1 / 31.9 / 32.4 %. Stage B (turn test) not run; replaced by the D32 check (pytest + T2 on the turn files).
+- **Next step:** D32: `asr.py` beam 5 written; Zaven runs the plain pytest suite (T1.2, T6), then T2 on the turn files in demo conditions. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -115,7 +116,7 @@ Corrections to PLAN.md:
 ## 6. Future ideas (not to be built unless Zaven moves them into scope)
 
 - Partial / streaming text while a person is still speaking (now: final lines only).
-- NVIDIA Armenian FastConformer CTC as the ASR model (D25): cannot loop, and its cost does not grow with the number of tokens. Set aside for time on 2026-11-01.
+- NVIDIA Armenian FastConformer CTC as the ASR model (D25): cannot loop, and its cost does not grow with the number of tokens. Set aside for time on 2026-11-01; brought into scope and stopped on 2026-11-05 (D31).
 
 ---
 
@@ -182,7 +183,7 @@ Format: **what** · *why* · alternatives considered. All agreed 2026-10-28 unle
   - Interface: `Asr(model_dir).transcribe(audio) -> str`; audio is the Segment's float32 mono 16 kHz array; pieces joined with spaces and stripped; `""` if Whisper returns nothing (what to do with empty lines: S7).
   - `Asr` itself checks `model_dir/model.bin` exists and raises a clear "model missing" error; otherwise faster-whisper would treat the path as a model name and try a download (working rule 2, D15).
 - Addition (Zaven, 2026-11-01, M4): `temperature=0.0` in `transcribe`, so faster-whisper decodes each segment once and never re-decodes at higher temperatures. Reason: the S8 file-mode run on `mic_01` reached 111 s latency, and fallback retries on low-confidence Armenian were the leading suspect. The 5 s latency rule comes before a small loss in ASR accuracy. Result: `command_outputs/m4_file_mic01_temp0.txt`: max latency 111.1 s → 29.6 s, no swap growth, but 4 of 7 segments now print Whisper repetition loops.
-- Addition (Zaven, 2026-11-01, D26): `transcribe` now uses `beam_size=1` (replacing A2's 5), `without_timestamps=True`, and the D26 token cap (`max_new_tokens` = 2 × `token_cap(segment seconds)`). When the cap is hit, the text ends with ` ...` (L11).
+- Addition (Zaven, 2026-11-01, D26): `transcribe` now uses `beam_size=1` (replacing A2's 5; back to 5 by D32, 2026-11-05), `without_timestamps=True`, and the D26 token cap (`max_new_tokens` = 2 × `token_cap(segment seconds)`). When the cap is hit, the text ends with ` ...` (L11).
 
 **D4 — ASR bake-off after the skeleton (in M7), on our eval data + FLEURS.**
 - Candidates:
@@ -370,6 +371,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - Not yet known (measured after the export): speed on this CPU, RAM, and accuracy on our clips (CER on `mic_01`–`03`, same clean-up as `diag_asr.py`). The model outputs punctuation and capitals; the reference CSVs have them too (D18).
 - Alternatives (from the `latency_diag_asr_f.txt` results): (A) keep Whisper with g+b+c (rejected: drops roughly the last quarter of long segments without any sign, CER ≈ 49 %); (B) Whisper g+b with a shorter VAD cap, e.g. 7 s (not chosen: more mid-word cuts, L4, and the 1.9 s encoder floor stays); (D) Whisper g alone (rejected: max ASR 9.3 s breaks 5 s).
 - Addition (Zaven, 2026-11-01): superseded before any work started: not enough time left in the budget. Option B chosen instead (D26). FastConformer CTC moved to Future ideas (section 6); the reasons above stay as the record for that idea.
+- Addition (Zaven, 2026-11-05): brought back into scope by D31, on the GPU instead of the CPU; the reasons above (CTC cannot loop, cost grows with audio length only) still apply; stopped the same day (D31).
 
 **D26 — Latency fix: Whisper small, faster settings + shorter segments (option B).** (Zaven, 2026-11-01)
 - What: transcribe with `without_timestamps=True`, `beam_size=1`, `temperature=0`, and a token cap that only stops loops (it must never cut normal speech); the VAD segment cap (D8) is shortened from 12 s. The exact cap values are chosen from one more `diag_asr.py` run and agreed before `asr.py` / `audio_capture.py` change.
@@ -473,6 +475,30 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 - **G4d** MT (opus-mt) and VAD (Silero) stay on the CPU.
 - **G4e** Tests: T1.2 adds "`Asr` loads on cuda `int8_float16`"; T1.2 and T6 then need the GPU and fail loudly without it (D22). Exact TEST.md wording comes with the code.
 - **G4f** Records: D7 addition, R18 resolved, R1 mitigation with the G3 numbers.
+
+**D31 — ASR model: NVIDIA Armenian FastConformer, CTC head, greedy decoding, on the MX550 GPU (brought into scope from section 6).** (Zaven, 2026-11-05)
+- What: replace Whisper small with `nvidia/stt_hy_fastconformer_hybrid_large_pc` (D4), CTC head, greedy decoding. We export it to ONNX ourselves in a separate one-time env `.venv-nemo`; third-party ONNX exports stay rejected (D4, D23). It runs with **sherpa-onnx**'s NeMo CTC recognizer (feature extraction + greedy CTC decoding in the package) on the **GPU** (`provider="cuda"`), CUDA build `1.13.8+cuda12.cudnn9` (wheel `sherpa_onnx-1.13.8+cuda12.cudnn9.onnxruntime1.28.2-cp310-cp310-linux_x86_64.whl` from the sherpa-onnx wheel page, not PyPI). fp32 and int8 are both measured. Measured on our clips only (`mic_01`–`03`, `sys_01`), not FLEURS: the model was trained on FLEURS (D4 caveat). The app keeps Whisper small until FastConformer is measured and the switch is agreed; no runtime fallback between models or between GPU and CPU (D7, working rule 2).
+- Why: Whisper's decoder loops (L11; 2–7 of 47 segments in `command_outputs/m7_beam_sweep.txt`); CTC cannot loop and its cost grows with audio length only (D25).
+- Model (model card): ~115M parameters, CC-BY-4.0, 16 kHz mono, SentencePiece 1024 tokens, FLEURS WER 13.2 % (CTC), NeMo 2.0.0.
+- Beam sweep: stage B (turn test) is not run; `m7_beam_sweep.txt` stays as the Whisper record for the bake-off.
+- Alternatives: Whisper small beam 3 (loops 2/47, mean CER 31.9 %, max ASR 1.4 s; not chosen: still loops); runtime plain onnxruntime + own mel features (rejected: must match NeMo's preprocessor exactly, more code, risk of silent accuracy loss); CPU (not chosen, Zaven); export inside `.venv-convert` (rejected: NeMo and its dependencies could break the proven opus-mt env, D23).
+- Steps (each reviewed and committed on its own):
+  - **F0** records: this D#, section 3, section 6, D25 addition.
+  - **F1** `.venv-nemo` from `requirements-nemo.in`: `nemo_toolkit[asr]` 2.x + CPU-only torch; export runs on the CPU, once. Stop rules as D27 J4 (no build from source, no install / import problems).
+  - **F2** `scripts/download_models.py` fetches the `.nemo` at a pinned revision with SHA-256 and calls the export script (D15 pattern); output in `models/fastconformer-hy-ctc/`.
+  - **F3** `scripts/export_fastconformer.py` (in `.venv-nemo`): CTC head → `model.onnx`, `tokens.txt` (`<blk>` last), sherpa-onnx metadata, plus `model.int8.onnx`.
+  - **F4** GPU check in a separate measuring env `.venv-fc` (= `requirements.txt` with sherpa-onnx swapped for the CUDA build; `.venv` unchanged until F6, as D29 G1): sherpa-onnx loads with `provider="cuda"`; Silero's onnxruntime 1.23.2 and sherpa's bundled 1.28.2 load in one process; the diarizer on the CPU gives the same T1.6 result. Open risk: onnxruntime CUDA may need more NVIDIA libraries than the three loaded today (D30 G4c).
+  - **F5** `scripts/diag_fastconformer.py` in `.venv-fc`, demo conditions (Zoom tab open, plugged in): same segments (7 s cap) and CER clean-up as `diag_asr.py`, on `mic_01`–`03` + `sys_01`; fp32 and int8: ASR time per segment (median / max), CER per clip, RSS, VRAM, swap. Expected: int8 on the GPU may be slower than fp32 (limited CUDA int8 kernels).
+  - **F6** Zaven decides; a new D# covers the `asr.py` change, merging the CUDA sherpa-onnx into `requirements.in` (`--find-links`), and what happens to the token cap and ` ...` marker (L11), which CTC does not need.
+- Addition (Zaven, 2026-11-05): **stopped** before F1; nothing was installed or built. FastConformer goes back to Future ideas (section 6). ASR stays Whisper small, now with beam 5 (D32).
+
+**D32 — Whisper small decodes with `beam_size=5` (replaces D26's `beam_size=1`).** (Zaven, 2026-11-05)
+- What: `asr.py` `BEAM_SIZE = 5`. Unchanged: `without_timestamps=True`, `temperature=0`, `repetition_penalty` 1.1, the D26 token cap with ` ...`, the 7 s VAD cap, cuda `int8_float16`.
+- Why (`command_outputs/m7_beam_sweep.txt`, 47 segments of `mic_01`–`03` + `sys_01`, GPU): mean CER 41.5 % → 32.4 %, loops 7/47 → 2/47; max ASR per segment 1.0 s → 1.6 s, median 0.74 s → 1.09 s.
+- Trade-off: beam search sometimes ends early and drops the rest of a segment, with no ` ...` marker because the cap was not hit (beam 5: `mic_01` seg 9, `mic_03` seg 3, about half the usual tokens).
+- Alternatives: beam 3 (mean CER 31.9 %, max 1.4 s, loops 2/47; almost the same; not chosen: Zaven chose 5); beam 2 (36.1 %) and beam 1 (41.5 %) rejected: less accurate.
+- Check (replaces the sweep's stage B): plain pytest suite (T1.2, T6), then T2 on the turn files in demo conditions; pass = every line ≤ 5 s. TEST.md rows are agreed after the run.
+- Notes: no test and nothing in `app.py` refers to the beam size; README line 270 (`beam_size=1`) goes on the postponed S7c list.
 
 ---
 

@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-05 (M6 S6)
+- Created: 2026-10-26 · Last updated: 2026-11-05 (M6 S7a)
 
 ---
 
@@ -46,7 +46,7 @@
 
 ## 3. Current status
 
-- **Current milestone:** M5 — second device, then M6 diarizer (Zaven, 2026-11-04). M10: README done (2026-11-01); final test run and TEST.md statuses after M6. M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
+- **Current milestone:** M10 — README pass (D27 S7c), then the final test run and TEST.md statuses (Zaven, 2026-11-05). M5 and M6 done (2026-11-05). M4 tests T3 and T4 postponed (Zaven, 2026-11-01).
 - **M5 + M6 plan agreed (2026-11-04):** steps S1–S7 and their rules in D27.
 - **README done (2026-11-01):** `README.md` written and committed (`496adf4`).
 - **Latency fix done (2026-11-01):** D26 (Whisper greedy, no timestamps, token cap with ` ...`, VAD cap 7 s); T2 on mic_01 passed: max 4.8 s (`command_outputs/d26_t2_mic01.txt`).
@@ -69,7 +69,8 @@
 - **M6 S4 done (2026-11-05):** speaker-embedding model chosen: `sherpa-onnx` 1.13.8 + WeSpeaker ResNet34 on the CPU; CAM++ rejected; short-segment length 2.0 s (D27 J1–J9; `command_outputs/m6_s4_embed_resnet34.txt`, `m6_s4_embed_campplus.txt`).
 - **M6 S5 done (2026-11-05):** `diarizer.py` (`SpeakerClusters`, `Embedder`, `Diarizer`; K3 a option B; `THRESHOLD` 0.76, tuned on `mic_01`–`03` + `sys_01`) + `tests/test_diarizer.py`; 60 tests pass; T1.6 passed: each solo mic clip 1 speaker, `sys_01` 16/16 with 2 speakers (tuned on it, so not an independent check; L14) (D27 S5; `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`).
 - **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
-- **Next step:** M6 S7: T2 on the turn files `turns_mic.wav` + `turns_sys.wav` in demo conditions, then statuses, DECISIONS / TEST updates and README sections (D27 S7, handover 010). T3 / T4 later (Zaven, 2026-11-01).
+- **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
+- **Next step:** M6 S7c: README sections (handover 010 list), drafted in full for Zaven's review. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -440,6 +441,7 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **H5** T6: `test_system_wav_still_refused` replaced by `test_system_wav_run_accepted` (0.5 s silent mic WAV + committed fixture `speech_short.wav` as system → exit 0, a `Speaker 1:` line, no `Me:` line, last message `stopped`; no eval data, D22); `test_missing_model` also checks the speaker model is named; new `test_speaker_model_path_matches_diarizer`.
   - **H6** files: `app.py`, `tests/test_cli.py`.
   - **H7** results: 61 tests pass, T6 8/8 (`command_outputs/m6_s6_pytest.txt`). `python app.py --system-wav eval/clips/sys_01.wav` under `/usr/bin/time -v` (`command_outputs/m6_s6_sys01.txt`; Zoom tab not confirmed): 16 lines, labels the same as T1.6 (16/16, 2 speakers); latency median ≈ 1.4 s, max 5.2 s, 2 lines > 5 s (`[00:01:10]`, cut by the token cap, and `[00:01:17]`, which most likely waited behind it, D13), `[00:00:42]` (also cut) 4.8 s; 4/16 cut; peak RSS 1070 MB (not comparable with the earlier 878 MB, which `diag_two_devices.py` measured on the turn files). Not T2 (`sys_01` is non-stop speech). Where the time went on the cut lines is not known; no diagnostic now: S7's T2 on the turn files is the check, and only if it fails do we look into it (Zaven, option A). Also seen: the L11 `�` before ` ...` (`[00:00:14]`).
+- Addition (Zaven, 2026-11-05, S7a): T2 on the turn files with the real diarizer: `/usr/bin/time -v python app.py --mic-wav eval/clips/turns_mic.wav --system-wav eval/clips/turns_sys.wav`, `free -m` before and after (`command_outputs/m6_s7_t2_turns.txt`; Zoom tab open, plugged in). **Passed:** 28 lines (Me 12, Speaker 1 9, Speaker 2 7), latency median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; 1/28 cut by the token cap; mic lines only "Me", system lines Speaker 1 / 2 in the order of the `sys_01` parts (report only, L14); peak RSS 1079 MB; RAM available 3270 → 2764 MB; swap 2034 → 2047 of 2047 MB (full; R17). The earlier app-path run without the diarizer (D30) had max 1.8 s. The L11 `�` note stays out of L11 (Zaven).
 
 **D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)
 - What: the app keeps `N_ASR_WORKERS = 1` and `CPU_THREADS = 4` (D1, D3 A1).
@@ -483,8 +485,8 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
 | M2 | Eval data v0: Zaven's clips (4, D17) + CSVs; FLEURS subset | 2 | ☑ done (2026-10-31) |
 | M3 | Walking skeleton, mic only: `--list-devices`, capture, VAD, ASR, MT, print, `quit`, latency measurement, file mode | 3 | ☑ done (2026-11-01) |
 | M4 | Initial tests: unit, end-to-end latency, capture smoke, load test (D2) | 2 | ☐ not done |
-| M5 | Second device (system monitor), both devices at once | 1 | ☐ not done |
-| M6 | Diarization (1–2 remote speakers) | 2 | ☐ not done |
+| M5 | Second device (system monitor), both devices at once | 1 | ☑ done (2026-11-05) |
+| M6 | Diarization (1–2 remote speakers) | 2 | ☑ done (2026-11-05) |
 | M7 | Baseline evaluation + ASR/MT bake-off → final model choice | 2 | ☐ not done |
 | M8 | Improvement pass on the weakest measured point (incl. segment cap) | 1.5 | ☐ not done |
 | M9 | Virtual-sink capture test | 1 | ☐ not done |
@@ -499,7 +501,7 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 
 | # | Risk | Mitigation | Status |
 |---|---|---|---|
-| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). diag_asr finding (2026-11-01): Whisper small cannot transcribe a full 12 s Armenian segment in ≤ 5 s on this CPU without losing text; FastConformer CTC brought forward (D25). D26 result (2026-11-01): T2 on mic_01 max latency 4.8 s, median 4.1 s; headroom is small (worst lines are cap-cut segments). GPU finding (2026-11-05, D29 / D30): with ASR on the MX550 (cuda `int8_float16`) the turn test had max latency 1.5 s, median 1.2 s, 0/28 lines > 5 s (CPU: max 5.9 s, 3/28) (`command_outputs/m5_g3_turns_gpu.txt`). | accepted |
+| R1 | Latency exceeds 5 s | Build the whole flow early; measure latency on every line (D12); end-to-end latency test; load test (D2). M1 finding (2026-10-30): Whisper small default settings RTF 0.58, so a 12 s segment (D8 cap) needs ≈ 7 s for ASR alone; to be addressed in M4 (T2, T4). M3 S8 finding (2026-11-01): fixed cost ≈ 2.4 s per segment; on mic_01 latency grew to 111 s, so ASR took far longer than RTF 0.58 on several segments; diagnosed first in M4. Latency-fix finding (2026-11-01): with `temperature=0` (D3) max latency on mic_01 fell from 111.1 s to 29.6 s; no swap growth, so not RAM; Whisper repetition loops are the main cause (`command_outputs/m4_file_mic01_temp0.txt`). diag_asr finding (2026-11-01): Whisper small cannot transcribe a full 12 s Armenian segment in ≤ 5 s on this CPU without losing text; FastConformer CTC brought forward (D25). D26 result (2026-11-01): T2 on mic_01 max latency 4.8 s, median 4.1 s; headroom is small (worst lines are cap-cut segments). GPU finding (2026-11-05, D29 / D30): with ASR on the MX550 (cuda `int8_float16`) the turn test had max latency 1.5 s, median 1.2 s, 0/28 lines > 5 s (CPU: max 5.9 s, 3/28) (`command_outputs/m5_g3_turns_gpu.txt`). M6 S7 T2 (2026-11-05, real diarizer, turn files, Zoom tab open, plugged in): max 1.6 s, median 1.3 s, 0/28 lines > 5 s (`command_outputs/m6_s7_t2_turns.txt`). | accepted |
 | R2 | Re-deciding the same thing many times | Stable rules and decisions recorded here | accepted |
 | R3 | Wrong or big commits | Small commits, proposed by Claude, run only by Zaven | accepted |
 | R4 | App does not work on this laptop | Laptop specs collected early (section 2); models sized to RAM | accepted |
@@ -509,13 +511,13 @@ Zaven decides when a milestone overruns. Cut order: M9, then M8.
 | R8 | CPU/RAM contention (ASR + MT + diarizer + Zoom) | Load test (D2); small models first | accepted |
 | R9 | PulseAudio/PipeWire mismatch | Checked: real PulseAudio 15.99.1; capture via `parec` (D10) | accepted |
 | R10 | Speaker bleed / echo into mic → false "Me" lines | **Will not fix** — echo handling is out of scope; headphones are up to the user | will not fix |
-| R11 | Live diarization harder than offline; short segments → unstable embeddings | Online clustering; test with solo mic clips (D17) | accepted |
+| R11 | Live diarization harder than offline; short segments → unstable embeddings | Online clustering; test with solo mic clips (D17). Online clustering + 2.0 s short-segment rule (D27 J8, K2); T1.6 passed (2026-11-05) | accepted |
 | R12 | VAD cuts mid-word or waits too long | Tuned parameters (D8); revisit in M8 | accepted |
 | R13 | Eval set too small to tell real improvements from noise | Add FLEURS subset (D19); treat small differences carefully. Diarizer threshold tuned on `sys_01`, the only 2-speaker clip (D27 S5); no second clip will be made (Zaven, 2026-11-05), so the diarizer has no untouched check (L14) | accepted |
 | R14 | Model download size / disk | 309 GB free; models downloaded once (D15) | accepted |
 | R15 | Armenian script renders badly in terminal | Checked in M1: text is correct UTF-8; overlap came from Ubuntu Mono lacking Armenian letters. Fix: terminal font DejaVu Sans Mono (setup note in README, M10) | accepted |
 | R16 | Scope creep | Working rule 1; Future ideas section | accepted |
-| R17 | RAM: only ~2.4 GB free, swap already used → swapping breaks 5 s | Load test (D2); RAM check in M1; close unneeded apps before demo; light MT first (D5) | accepted |
+| R17 | RAM: only ~2.4 GB free, swap already used → swapping breaks 5 s | Load test (D2); RAM check in M1; close unneeded apps before demo; light MT first (D5). M6 S7 T2 (2026-11-05): swap was full (2034 → 2047 of 2047 MB) during the run; latency unaffected (max 1.6 s); app peak RSS 1079 MB | accepted |
 | R18 | MX550 GPU path costs time (CUDA/cuDNN setup) | CPU first (D7); GPU only in M7, time-boxed to 1 h. GPU work brought forward to M5 (D29); the 1 h time-box is lifted (Zaven, 2026-11-05). Resolved by D29 / D30 (2026-11-05): CUDA libraries from pip, loaded in-process; one wrong library path cost one strike | resolved |
 | R19 | 20 h budget overrun | Hours per milestone; Zaven decides cuts; cut order M9 → M8 | accepted |
 

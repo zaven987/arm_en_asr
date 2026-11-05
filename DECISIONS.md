@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-05
+- Created: 2026-10-26 · Last updated: 2026-11-05 (M6 S6)
 
 ---
 
@@ -68,7 +68,8 @@
 - **M5 S3 done (2026-11-05):** two-device capture (`Capture`, E1 session offset, E2 / E3, F1–F8); `--system` still refused (E4); `ParecSource` stop/start race fixed (F8); 41 tests pass (`command_outputs/m5_s3b_pytest.txt`).
 - **M6 S4 done (2026-11-05):** speaker-embedding model chosen: `sherpa-onnx` 1.13.8 + WeSpeaker ResNet34 on the CPU; CAM++ rejected; short-segment length 2.0 s (D27 J1–J9; `command_outputs/m6_s4_embed_resnet34.txt`, `m6_s4_embed_campplus.txt`).
 - **M6 S5 done (2026-11-05):** `diarizer.py` (`SpeakerClusters`, `Embedder`, `Diarizer`; K3 a option B; `THRESHOLD` 0.76, tuned on `mic_01`–`03` + `sys_01`) + `tests/test_diarizer.py`; 60 tests pass; T1.6 passed: each solo mic clip 1 speaker, `sys_01` 16/16 with 2 speakers (tuned on it, so not an independent check; L14) (D27 S5; `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`).
-- **Next step:** M6 S6: the app passes the real diarizer; the `--system` refusal is removed (D27). T3 / T4 later (Zaven, 2026-11-01).
+- **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
+- **Next step:** M6 S7: T2 on the turn files `turns_mic.wav` + `turns_sys.wav` in demo conditions, then statuses, DECISIONS / TEST updates and README sections (D27 S7, handover 010). T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -431,6 +432,14 @@ requirements.in  requirements-convert.in  requirements-convert.txt     # added 2
   - **Change (Zaven): the threshold is tuned on `sys_01` too.** This replaces "Threshold tuned on `mic_01`–`03` only … `sys_01` is used for testing only" in "M6 clustering (S5)" above. `tune_diarizer.py --sys01` prints `sys_01`'s speakers found and % correct per threshold, and the range where the mic rules pass **and** `sys_01` finds 2 speakers (printing only; the threshold is chosen together). With option B: that range is **0.72–0.80** (`sys_01` 100 % correct there; mic rules pass 0.60–0.83) → **`THRESHOLD` = 0.76** (Zaven) (`command_outputs/m6_s5_tune_sys01_b.txt`). The mic-only rule with option B would give 0.715, which still merges `sys_01`.
   - **Consequences:** `sys_01` is no longer an independent check (its T1.6 result is 100 % by construction); the margin is 0.04 on each side; taking turns on the mic clips is 96.8 % correct (one segment: the option B case, L13). **No second 2-speaker clip will be made** (Zaven), so the diarizer has no untouched check (R13, L14).
   - **K5–K8:** `THRESHOLD` set from the tuning run; `tests/test_diarizer.py` (default suite: rules on made-up vectors, constants, missing model, real `Embedder` / `Diarizer` on `speech_short.wav`; `eval`: T1.6); files and order as proposed. Results with 0.76: 60 tests pass (`command_outputs/m6_s5b_pytest.txt`); T1.6: `mic_01`–`03` 1 speaker each, `sys_01` 16/16, 2 speakers, short segments 3/3 (`command_outputs/m6_s5b_t16.txt`).
+- Addition (Zaven, 2026-11-05, S6, H1–H7): the app connects the real diarizer.
+  - **H1** `app.py` builds `Diarizer(MODELS_DIR / SPEAKER_MODEL)` (default `THRESHOLD` 0.76) only when a system input is given and passes it to `Pipeline(…, diarizer=…)`; a mic-only run has no diarizer (no RAM, no thread). `DiarizerError` → `ERROR: …`, exit 1.
+  - **H2** the `--system` / `--system-wav` refusal (E4 / F5 in `app.py`) is removed. E4 stays in `Pipeline`: a system segment without a diarizer is refused.
+  - **H3** `check_models()` checks the speaker-embedding model **always**, also without a system input (Zaven), so every run needs the same complete install. The path is a constant in `app.py` (`SPEAKER_MODEL`), so the early checks and `--list-devices` do not import sherpa-onnx; a T6 test checks it equals `diarizer.MODEL_FILE`. Alternative: only with a system input (rejected).
+  - **H4** no diarizer warm-up: in S4 the model's very first call took 37.5 ms for 1 s of audio, the same rate as later calls (~35 ms per second of audio; `command_outputs/m6_s4_embed_resnet34.txt`), and the diarizer runs beside ASR. A warm-up, if ever added, must call `embed()` only, never `label()` (that would create Speaker 1 from silence).
+  - **H5** T6: `test_system_wav_still_refused` replaced by `test_system_wav_run_accepted` (0.5 s silent mic WAV + committed fixture `speech_short.wav` as system → exit 0, a `Speaker 1:` line, no `Me:` line, last message `stopped`; no eval data, D22); `test_missing_model` also checks the speaker model is named; new `test_speaker_model_path_matches_diarizer`.
+  - **H6** files: `app.py`, `tests/test_cli.py`.
+  - **H7** results: 61 tests pass, T6 8/8 (`command_outputs/m6_s6_pytest.txt`). `python app.py --system-wav eval/clips/sys_01.wav` under `/usr/bin/time -v` (`command_outputs/m6_s6_sys01.txt`; Zoom tab not confirmed): 16 lines, labels the same as T1.6 (16/16, 2 speakers); latency median ≈ 1.4 s, max 5.2 s, 2 lines > 5 s (`[00:01:10]`, cut by the token cap, and `[00:01:17]`, which most likely waited behind it, D13), `[00:00:42]` (also cut) 4.8 s; 4/16 cut; peak RSS 1070 MB (not comparable with the earlier 878 MB, which `diag_two_devices.py` measured on the turn files). Not T2 (`sys_01` is non-stop speech). Where the time went on the cut lines is not known; no diagnostic now: S7's T2 on the turn files is the check, and only if it fails do we look into it (Zaven, option A). Also seen: the L11 `�` before ` ...` (`[00:00:14]`).
 
 **D28 — ASR concurrency: N = 1 worker, `cpu_threads` 4 (unchanged).** (Zaven, 2026-11-04)
 - What: the app keeps `N_ASR_WORKERS = 1` and `CPU_THREADS = 4` (D1, D3 A1).

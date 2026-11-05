@@ -181,15 +181,15 @@
 
 ### T6 — CLI fail-loudly checks
 - **Purpose:** errors are clear and the app never silently falls back.
-- **Linked:** working rule 2, D11, D15, D27.
+- **Linked:** working rule 2, D11, D15, D27 (incl. S6).
 - **Milestone:** M3.
 - **Run:** `python -m pytest tests/test_cli.py -v`
 - **Pass, in all cases:**
   - **Unknown device name** passed to `--mic` / `--system` → the app exits with a non-zero code and a clear error naming the device.
-  - **Missing model** → the app exits with a non-zero code and a clear error naming the model. No download is attempted.
+  - **Missing model** → the app exits with a non-zero code and a clear error naming the model. No download is attempted. The speaker-embedding model is checked and named too, also without a system input (D27 S6 H3); `app.SPEAKER_MODEL` equals `diarizer.MODEL_FILE`.
   - **Unknown stdin command** (any text other than `quit`) → prints "unknown command" and keeps running.
   - **`quit` + Enter** → clean shutdown with exit code 0. All `parec` subprocesses and worker threads are stopped.
-  - Until S6: a valid `--system-wav` → exit 1 with "refused until the diarizer is connected" (D27 E4; replaced in S6).
+  - A short `--system-wav` run (0.5 s silent mic WAV + `speech_short.wav` as system) → exit 0, a `Speaker 1:` line, no `Me:` line, last message `stopped` (D27 S6; replaces the S3 check "`--system-wav` refused until the diarizer is connected"). Needs the GPU (D30).
   - File mode with the mic only (a 0.5 s silent WAV) → the app ends by itself with exit 0, and the last message is `stopped` (E2). Needs the GPU (D30).
 - **Status:** passed (2026-11-05, see results log)
 
@@ -226,3 +226,5 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-05 | T1.6 | M6 S4 records commit + S5 files (committed after the run) | plain `python -m pytest -v` (60 + 2 old K3 a tests = 62) and `python -m pytest -m eval tests/test_diarizer.py -v -s`; `THRESHOLD` 0.655 (mic-only K4), first K3 (a) rule | default suite 62/62 passed; `mic_01`–`03` 1 speaker each; `sys_01` 9/16 correct (56.2 %), 1 speaker found (reference 2), short 2/3 | passed (as defined then); `sys_01` merged | `command_outputs/m6_s5_pytest.txt`, `m6_s5_t16.txt`; led to tuning on `sys_01` and option B (D27 S5) |
 | 2026-11-05 | — (M6 S5 threshold tuning, not a test) | same + `tune_diarizer.py` | `tune_diarizer.py` (thresholds 0.50–0.90), then `--sys01` with the first K3 (a) rule, then `--sys01` with option B | mic only: passing 0.60–0.71 → 0.655. `--sys01`, first rule: no threshold passes both (mic_01 splits above 0.71; `sys_01` 2 speakers only at 0.72–0.80). `--sys01`, option B: both pass at 0.72–0.80 → 0.76; taking turns 96.8 % | measurement | `command_outputs/m6_s5_tune.txt`, `m6_s5_tune_sys01.txt`, `m6_s5_tune_sys01_b.txt`; result: D27 S5 (option B, `THRESHOLD` 0.76) |
 | 2026-11-05 | T1.6 | same, final S5 code (committed after the run) | plain `python -m pytest -v` and `python -m pytest -m eval tests/test_diarizer.py -v -s`; `THRESHOLD` 0.76, K3 (a) option B | default suite 60/60 passed (20 diarizer tests); `mic_01`–`03` 1 speaker each; `sys_01` 16/16 (100 %), 2 speakers, short 3/3, not ready 0 | passed | `command_outputs/m6_s5b_pytest.txt`, `m6_s5b_t16.txt`; `sys_01` was tuned on, not an independent check (L14) |
+| 2026-11-05 | T6 | S6 code (`app.py`, `tests/test_cli.py`; committed after the run) | plain `python -m pytest -v`; live on a real PulseAudio source, no person; real diarizer connected (D27 S6) | 8/8 T6 tests passed (the earlier 6 without the refusal test, `test_missing_model` now also names the speaker model, plus `--system-wav` run accepted and exits 0 with a `Speaker 1:` line, plus `SPEAKER_MODEL` = `diarizer.MODEL_FILE`); whole default suite 61 passed in 18.06 s | passed | `command_outputs/m6_s6_pytest.txt` |
+| 2026-11-05 | — (M6 S6 measurement: `sys_01` through the app, not T2) | same | `python app.py --system-wav eval/clips/sys_01.wav` under `/usr/bin/time -v`, real-time feed, real diarizer, ASR on GPU; Zoom tab not confirmed | 16 lines; labels the same as T1.6 (16/16, 2 speakers); latency median ≈ 1.4 s, max 5.2 s, 2 lines > 5 s (one cut by the token cap, one waiting behind it), 4/16 cut; peak RSS 1070 MB; exit 0 | measurement | `command_outputs/m6_s6_sys01.txt`; non-stop speech, so not T2; S7's T2 on the turn files is the check (D27 S6 H7) |

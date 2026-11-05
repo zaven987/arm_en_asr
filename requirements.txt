@@ -52,6 +52,14 @@ numpy==2.2.6
     #   -r requirements.in
     #   ctranslate2
     #   onnxruntime
+nvidia-cublas-cu12==12.9.3.13
+    # via
+    #   -r requirements.in
+    #   nvidia-cudnn-cu12
+nvidia-cuda-nvrtc-cu12==12.9.86
+    # via nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.28.0.42
+    # via -r requirements.in
 onnxruntime==1.23.2
     # via
     #   -r requirements.in

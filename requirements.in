@@ -10,3 +10,5 @@ numpy==2.2.6            # audio arrays. Last version for Python 3.10
 huggingface-hub         # downloads in download_models.py (D15). compile picks the exact version
 psutil==7.2.2           # RSS/swap measurement for the M1 RAM check and T4
 pytest==9.0.3           # tests (TEST.md)
+nvidia-cublas-cu12==12.9.3.13  # cuBLAS for CUDA 12: Whisper on the MX550 GPU (D30); pulls in nvrtc
+nvidia-cudnn-cu12==9.28.0.42   # cuDNN 9 for CUDA 12: Whisper on the MX550 GPU (D30)

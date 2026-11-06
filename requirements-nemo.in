@@ -1,0 +1,8 @@
+# requirements-nemo.in: direct deps of the one-time FastConformer export env (D31 F1). Edited by hand.
+# requirements-nemo.txt is generated from this by `uv pip compile --torch-backend cpu`. Never edit it by hand.
+# Target: Python 3.10 (D14). Used only in .venv-nemo, never in .venv.
+
+nemo_toolkit[asr]>=2.0,<3   # model card: NeMo 2.0.0; 3.0.0 (2026-08) is a new major, not used
+torch>=2.14,<2.15           # CPU-only via --torch-backend cpu; 2.14 = last with Python 3.10 wheels (D23)
+onnx                        # F3: add sherpa-onnx metadata to model.onnx
+onnxruntime                 # F3: int8 quantization (quantize_dynamic) + load check

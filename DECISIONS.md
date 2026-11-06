@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F1, F2)
+- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F3)
 
 ---
 
@@ -71,7 +71,7 @@
 - **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
 - **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
 - **M7 beam sweep done (2026-11-05):** Whisper small, cuda `int8_float16`, beams 1 / 2 / 3 / 5 on `mic_01`–`03` + `sys_01` (47 segments; `command_outputs/m7_beam_sweep.txt`, `diag_asr.py` variants b2 / b3): ASR max per segment 1.0 / 1.3 / 1.4 / 1.6 s, loops 7 / 3 / 2 / 2 of 47, mean CER 41.5 / 36.1 / 31.9 / 32.4 %. Stage B (turn test) not run; replaced by the D32 check (pytest + T2 on the turn files).
-- **Next step:** D31 F2: `python scripts/download_models.py` fetches and checks the FastConformer `.nemo` (F1 done 2026-11-06). D32 check (plain pytest suite, T2 on the turn files) still to be reported. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
+- **Next step:** D31 F3: `python scripts/download_models.py` runs the FastConformer ONNX export (F1, F2 done 2026-11-06). D32 check (plain pytest suite, T2 on the turn files) still to be reported. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -296,6 +296,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   make_turns.py (M5: turn-taking WAVs turns_mic / turns_sys from mic_01 + sys_01; added 2026-11-04)
                           #   diag_embed.py (M6 S4: speaker-embedding measurement on mic_01-03 + sys_01; added 2026-11-05)
                           #   tune_diarizer.py (M6 S5: diarizer threshold sweep on mic_01-03, --sys01 adds sys_01; added 2026-11-05)
+                          #   export_fastconformer.py (D31 F3: FastConformer CTC head -> ONNX for sherpa-onnx, runs in .venv-nemo; added 2026-11-06)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -495,6 +496,8 @@ requirements-nemo.in  requirements-nemo.txt     # added 2026-11-06 (D31 F1): one
 - Addition (Zaven, 2026-11-06): **resumed** from F1, steps F1–F6 unchanged. Whisper small with beam 5 (D32) stays the app ASR until F6. F1 files agreed: `requirements-nemo.in` (`nemo_toolkit[asr]>=2.0,<3`, `torch>=2.14,<2.15` CPU, `onnx`, `onnxruntime`) → `requirements-nemo.txt` by `uv pip compile --torch-backend cpu`; `.venv-nemo/` gitignored. If no NeMo 2.x fits Python 3.10 + torch 2.14, that is a stop rule (J4) and Zaven decides.
 - Addition (Zaven, 2026-11-06): **F1 done:** `.venv-nemo`, 190 packages: nemo-toolkit 2.7.3, torch 2.14.1+cpu, onnx 1.22.0, onnxruntime 1.23.2; import OK, no CUDA (`command_outputs/m7_f1_compile.txt`, `m7_f1_install.txt`, `m7_f1_import.txt`). 4 pure-Python source archives built (antlr4-python3-runtime, kaldi-python-io, wget, sox); accepted under J4 (Zaven). `cuda-bindings` 13.4.4 came in as a NeMo dependency; unused (CPU torch).
 - Addition (Zaven, 2026-11-06): **F2 / F3 split** (changes F2 above): F2 only downloads and checks the `.nemo` (`nvidia/stt_hy_fastconformer_hybrid_large_pc` at revision `353b40909f02cf5b74a577294822d8c73fbb1ca1`, `stt_hy_fastconformer_hybrid_large_pc.nemo`, 459 243 520 bytes, SHA-256 `30fac7407cbdff02f77564c11139dd861e933364850d8c60a27c2843d119fdf7`) into `models/src/fastconformer-hy/`; F3 adds the export call to `download_models.py` together with `export_fastconformer.py`, so each step runs on its own.
+- Addition (Zaven, 2026-11-06): **F2 done:** `.nemo` downloaded and checked, 459 243 520 bytes, SHA-256 OK (`command_outputs/m7_f2_download.txt`).
+- Addition (Zaven, 2026-11-06): **F3 agreed (E1–E9):** `scripts/export_fastconformer.py` (runs in `.venv-nemo`): E1 writes `<out>.part`, renamed at the end; refuses an existing `<out>`; offline. E2 `ASRModel.restore_from` on the CPU; must be the hybrid RNNT+CTC BPE class. E3 reads sample rate (must be 16 000), features, `normalize`, subsampling factor from the model config. E4 exports the CTC head only (`set_export_config({"decoder_type": "ctc"})`); ONNX output size = vocabulary + 1. E5 `tokens.txt`, `<blk>` last. E6 metadata `vocab_size`, `normalize_type`, `subsampling_factor` (from E3) + `model_type`, `version`, `url`, `comment`. E7 `model.int8.onnx` by `quantize_dynamic` (QUInt8). E8 self-check on `speech_short.wav`: fp32 ONNX text must equal NeMo's own CTC output (else fail); int8 text + CER vs fp32 reported. E9 sizes, SHA-256, time, peak RSS. `download_models.py` `export_fastconformer()` runs it (`convert_opus` pattern) into `models/fastconformer-hy-ctc/`.
 
 **D32 — Whisper small decodes with `beam_size=5` (replaces D26's `beam_size=1`).** (Zaven, 2026-11-05)
 - What: `asr.py` `BEAM_SIZE = 5`. Unchanged: `without_timestamps=True`, `temperature=0`, `repetition_penalty` 1.1, the D26 token cap with ` ...`, the 7 s VAD cap, cuda `int8_float16`.

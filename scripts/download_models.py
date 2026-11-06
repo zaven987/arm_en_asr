@@ -1,5 +1,5 @@
 """One-time model download and conversion (D15, D23, D24; speaker embeddings D27 S4 J2;
-FastConformer source D31 F2).
+FastConformer source D31 F2, ONNX export D31 F3).
 
 Run once from the repo root, with .venv active and internet on:
     python scripts/download_models.py
@@ -71,6 +71,13 @@ FC_FILES = {
     "stt_hy_fastconformer_hybrid_large_pc.nemo":
         "30fac7407cbdff02f77564c11139dd861e933364850d8c60a27c2843d119fdf7",
 }
+
+# FastConformer CTC head exported to ONNX for sherpa-onnx (D31 F3), by the export script in
+# .venv-nemo (the convert_opus pattern: the export env never enters the app env).
+FC_DIR = MODELS / "fastconformer-hy-ctc"
+FC_OUT_FILES = ("model.onnx", "model.int8.onnx", "tokens.txt")
+NEMO_PYTHON = ROOT / ".venv-nemo" / "bin" / "python"
+FC_EXPORT_SCRIPT = ROOT / "scripts" / "export_fastconformer.py"
 
 
 def fail(msg: str) -> None:
@@ -197,6 +204,29 @@ def download_fastconformer_source() -> None:
         print(f"[fastconformer-src] {name}: {path.stat().st_size} bytes, sha256 OK")
 
 
+def export_fastconformer() -> None:
+    """D31 F3: run scripts/export_fastconformer.py in .venv-nemo (E1-E9)."""
+    if all((FC_DIR / f).exists() for f in FC_OUT_FILES):
+        print(f"[fastconformer-onnx] already present, skipping: {FC_DIR}")
+        return
+    if FC_DIR.exists():
+        fail(f"[fastconformer-onnx] {FC_DIR} exists but is incomplete; delete it and rerun")
+    if not NEMO_PYTHON.exists():
+        fail(f"[fastconformer-onnx] {NEMO_PYTHON} not found (create .venv-nemo first, D31 F1)")
+    nemo_file = FC_SRC_DIR / next(iter(FC_FILES))
+    cmd = [str(NEMO_PYTHON), str(FC_EXPORT_SCRIPT), "--nemo", str(nemo_file), "--out", str(FC_DIR)]
+    print("[fastconformer-onnx] exporting the CTC head to ONNX in .venv-nemo (peak RAM ~2-3 GB) ...",
+          flush=True)
+    env = dict(os.environ, HF_HUB_OFFLINE="1")  # the export must not download anything
+    result = subprocess.run(cmd, env=env)
+    if result.returncode != 0:
+        fail(f"[fastconformer-onnx] export exited with code {result.returncode}")
+    missing = [f for f in FC_OUT_FILES if not (FC_DIR / f).exists()]
+    if missing:
+        fail(f"[fastconformer-onnx] files missing after export: {', '.join(missing)}")
+    print(f"[fastconformer-onnx] done ({dir_size_mb(FC_DIR):.0f} MB)")
+
+
 def main() -> None:
     MODELS.mkdir(exist_ok=True)
     download_whisper()
@@ -205,6 +235,7 @@ def main() -> None:
     download_silero()
     download_speaker_embedding()
     download_fastconformer_source()
+    export_fastconformer()
     print("All models ready in", MODELS)
 
 

@@ -299,6 +299,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   tune_diarizer.py (M6 S5: diarizer threshold sweep on mic_01-03, --sys01 adds sys_01; added 2026-11-05)
                           #   export_fastconformer.py (D31 F3: FastConformer CTC head -> ONNX for sherpa-onnx, runs in .venv-nemo; added 2026-11-06)
                           #   check_fc_gpu.py (D31 F4: FastConformer CTC on the GPU via sherpa-onnx CUDA, runs in .venv-fc; added 2026-11-06)
+                          #   diag_fastconformer.py (D31 F5: FastConformer CTC fp32 / int8 on the eval clips, same segments + CER as diag_asr.py, D33 order; runs in .venv-fc; added 2026-11-06)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore

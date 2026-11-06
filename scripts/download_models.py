@@ -1,4 +1,5 @@
-"""One-time model download and conversion (D15, D23, D24; speaker embeddings D27 S4 J2).
+"""One-time model download and conversion (D15, D23, D24; speaker embeddings D27 S4 J2;
+FastConformer source D31 F2).
 
 Run once from the repo root, with .venv active and internet on:
     python scripts/download_models.py
@@ -58,6 +59,17 @@ EMBED_DIR = MODELS / "speaker-embedding"
 EMBED_FILES = {
     "wespeaker_en_voxceleb_resnet34.onnx":
         "5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94",
+}
+
+# NVIDIA Armenian FastConformer hybrid (D31 F2): the .nemo checkpoint, input for the ONNX export
+# in .venv-nemo (F3). CC-BY-4.0. Pinned revision; the file is checked against its SHA-256
+# (from the file's Git LFS record at that revision).
+FC_REPO = "nvidia/stt_hy_fastconformer_hybrid_large_pc"
+FC_REV = "353b40909f02cf5b74a577294822d8c73fbb1ca1"
+FC_SRC_DIR = MODELS / "src" / "fastconformer-hy"
+FC_FILES = {
+    "stt_hy_fastconformer_hybrid_large_pc.nemo":
+        "30fac7407cbdff02f77564c11139dd861e933364850d8c60a27c2843d119fdf7",
 }
 
 
@@ -166,6 +178,25 @@ def download_speaker_embedding() -> None:
         print(f"[embed] {name}: {path.stat().st_size} bytes, sha256 OK")
 
 
+def download_fastconformer_source() -> None:
+    """D31 F2: download only; the export to ONNX comes in F3."""
+    FC_SRC_DIR.mkdir(parents=True, exist_ok=True)
+    for name, expected in FC_FILES.items():
+        path = FC_SRC_DIR / name
+        if path.exists():
+            print(f"[fastconformer-src] already present, checking: {path}")
+        else:
+            print(f"[fastconformer-src] downloading {FC_REPO}@{FC_REV[:8]} {name} (about 460 MB) ...")
+            hf_hub_download(FC_REPO, name, revision=FC_REV, local_dir=FC_SRC_DIR)
+            if not path.exists():
+                fail(f"[fastconformer-src] {name} missing after download in {FC_SRC_DIR}")
+        got = sha256_file(path)
+        if got != expected:
+            fail(f"[fastconformer-src] SHA-256 mismatch for {path}: got {got}, expected {expected}; "
+                 "delete the file and rerun")
+        print(f"[fastconformer-src] {name}: {path.stat().st_size} bytes, sha256 OK")
+
+
 def main() -> None:
     MODELS.mkdir(exist_ok=True)
     download_whisper()
@@ -173,6 +204,7 @@ def main() -> None:
     convert_opus()
     download_silero()
     download_speaker_embedding()
+    download_fastconformer_source()
     print("All models ready in", MODELS)
 
 

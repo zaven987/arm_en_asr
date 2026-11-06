@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F4 done, D33)
+- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F5 done, D34)
 
 ---
 
@@ -72,7 +72,9 @@
 - **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
 - **M7 beam sweep done (2026-11-05):** Whisper small, cuda `int8_float16`, beams 1 / 2 / 3 / 5 on `mic_01`–`03` + `sys_01` (47 segments; `command_outputs/m7_beam_sweep.txt`, `diag_asr.py` variants b2 / b3): ASR max per segment 1.0 / 1.3 / 1.4 / 1.6 s, loops 7 / 3 / 2 / 2 of 47, mean CER 41.5 / 36.1 / 31.9 / 32.4 %. Stage B (turn test) not run; replaced by the D32 check (pytest + T2 on the turn files).
 - **M7 D31 F4 done (2026-11-06):** `.venv-fc`; FastConformer CTC on the GPU via sherpa-onnx CUDA: fp32 0.023 s / int8 0.131 s for 4.68 s, both CER 0 % on the fixture; order rule D33; T1.6 unchanged (`command_outputs/m7_f4e_check.txt`).
-- **Next step:** D31 F5: `scripts/diag_fastconformer.py` (plan to be agreed). D32 check (plain pytest suite, T2 on the turn files) still to be reported. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
+- **M7 D31 F5 done (2026-11-06):** FastConformer fp32 mean CER 9.4 % vs Whisper beam 5 32.4 %, max ASR 0.118 s vs 1.6 s (`command_outputs/m7_f5_diag_fc.txt`).
+- **M7 D31 F6 decided (2026-11-06): D34:** the app ASR becomes FastConformer CTC fp32 on the GPU; faster-whisper removed; the D32 check is not run (replaced by F6c).
+- **Next step:** D34 F6a: VAD cap measurement (`diag_fastconformer.py --seg-cap 7,10,12`), then F6b code. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -510,6 +512,14 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
   - **Result** (`m7_f4e_check.txt`, `CHECK OK`): C1–C3 OK (CUDA provider: 0 libraries not found). fp32: load 1.2 s, +580 MB VRAM, median 0.023 s for the 4.68 s fixture. int8: load 0.8 s, +76 MB VRAM, median 0.131 s. Both give exactly the E8 text (CER 0.0 %). End: VRAM 742 MB, RSS 1236 MB.
   - **Note:** int8 on the GPU is slower than fp32 and than int8 on the CPU (F3: 0.07 s), and adds little VRAM. Its quantized operations most likely run on the CPU inside onnxruntime (placement is per operation; C5 cannot see it). F5 measures both.
   - **T1.6 in `.venv-fc`:** the same as before: 19 default diarizer tests pass; `mic_01`–`03` 1 speaker each; `sys_01` 16/16, 2 speakers, short segments 3/3 (`m7_f4b_diarizer.txt`, `m7_f4b_t16.txt`).
+- Addition (Zaven, 2026-11-06): **F5 done** (`command_outputs/m7_f5_diag_fc.txt`; `diag_fastconformer.py`, cuda, num_threads 1, Zoom tab open, plugged in). Same 47 segments as `m7_beam_sweep.txt` (7 s cap), same CER clean-up.
+  - **fp32:** total ASR 3.65 s, median 0.100 s, max 0.118 s per segment; CER `mic_01` 8.2 %, `mic_02` 5.0 %, `mic_03` 6.9 %, `sys_01` 17.4 %, mean 9.4 %; 0 empty.
+  - **int8:** total 6.77 s, median 0.180 s, max 0.186 s; CER 8.3 / 4.9 / 6.9 / 17.2 %, mean 9.3 %; 0 empty.
+  - **Compared with Whisper small beam 5** (the app setting, D32): mean CER 32.4 % → 9.4 %, max ASR 1.6 s → 0.118 s, total 47.1 s → 3.65 s, no loops possible (D25).
+  - **Memory:** VRAM +582 MB (fp32) and +74 MB (int8) at load; the process ended at 1178 MB after the fp32 runs and 1382 MB after int8 (onnxruntime's GPU memory pool grows during decoding; both models were loaded). RSS 1238–1290 MB; swap full from the start (R17).
+  - **int8 rejected for the GPU:** the same CER, about 1.8× slower, and more VRAM. Its quantized operations run on the CPU (F4 note).
+  - **Seen:** some segment starts lose their first letters where the 7 s cap cut the word (L4).
+  - ASR time only; end-to-end latency (T2) is measured after F6.
 
 **D32 — Whisper small decodes with `beam_size=5` (replaces D26's `beam_size=1`).** (Zaven, 2026-11-05)
 - What: `asr.py` `BEAM_SIZE = 5`. Unchanged: `without_timestamps=True`, `temperature=0`, `repetition_penalty` 1.1, the D26 token cap with ` ...`, the 7 s VAD cap, cuda `int8_float16`.
@@ -539,6 +549,36 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
   - onnxruntime 1.28 for Silero (not possible: 1.23.2 is the last version for Python 3.10, D14)
   - a uv-managed Python 3.11+ (not chosen: a new environment and re-pinning everything)
 - Risk: the rule depends on import order. A later change that imports onnxruntime earlier stops loudly at the guard.
+- Addition (Zaven, 2026-11-06): the rule holds after the first recognizer is freed: create, free (VRAM 580 → 60 MB), then Silero, then a new recognizer worked, with the E8 text (`command_outputs/m7_f6_prime.txt`). So one created and freed recognizer is enough to set the order (used by `tests/conftest.py`, D34 N4).
+
+**D34 — App ASR: NVIDIA FastConformer CTC, fp32, on the MX550 GPU via sherpa-onnx (D31 F6; replaces Whisper small, D3 / D26 / D32).** (Zaven, 2026-11-06)
+- Why (D31 F5, `command_outputs/m7_f5_diag_fc.txt`, same 47 segments): mean CER 32.4 % (Whisper beam 5) → 9.4 %, max ASR per segment 1.6 s → 0.118 s, and CTC cannot loop (D25).
+- **N1 Model:** `models/fastconformer-hy-ctc/model.onnx` + `tokens.txt` (F3), fp32, `provider="cuda"`, `num_threads=1`, greedy CTC. int8 is not used (F5).
+- **N2 `asr.py`:** same interface: `Asr(model_dir, num_workers=1)`, `transcribe(audio) -> str` (stripped), `warm_up()` (1 s of silence; the first CUDA call takes 0.2 s against 0.02 s later, F4).
+  - A missing `model.onnx` / `tokens.txt` → `AsrError("model missing: …")`.
+  - `num_workers` other than 1 → `AsrError` (D28: one recognizer, one worker).
+  - `load_cuda_libraries()` also loads cudart, cuFFT and cuRAND (as F4 C1).
+- **N3 No silent CPU fallback:** after creating the recognizer, this process's VRAM (nvidia-smi) must have risen, else `AsrError`. No GPU or no nvidia-smi → `AsrError`.
+- **N4 D33 in the app:** the guard sits in `Asr` (first CUDA recognizer in the process). `app.py` `run_session` imports `asr`, builds and warms up `Asr` first, and only then imports `audio_capture` and builds the Silero VADs, MT and the diarizer. The D11 Q1 order (checks → models → pipeline → capture) holds; only the order among the models changes. pytest: `tests/conftest.py` creates one `Asr` at session start (before the test files are collected) and frees it at once (D33 addition), so the tests never hold two models on the GPU.
+- **N5 Removed** (CTC cannot loop, D25): the token cap, `CUT_MARKER` ` ...`, the beam / temperature / repetition-penalty / compute-type / CPU-thread settings. L11 and the D12 / D26 ` ...` additions are marked as history.
+- **N6 Requirements:**
+  - `requirements.in` swaps `sherpa-onnx==1.13.8` for the CUDA build via `--find-links`, and adds nvidia-cuda-runtime / cufft / curand-cu12.
+  - `requirements.txt` is compiled with `--emit-find-links`.
+  - `.venv` is updated with `uv pip sync requirements.txt`, so the CPU `sherpa-onnx-core` is removed rather than left alongside.
+  - The diarizer uses the same package on the CPU (T1.6 passed in `.venv-fc`).
+  - Afterwards, `requirements-fc.in/.txt` and `.venv-fc` are removed (as D30 G4b).
+- **N7 faster-whisper removed** (Zaven): out of `requirements.in`, `app.py`'s model checks and `scripts/download_models.py`. `ctranslate2` stays for MT (D5). `scripts/diag_asr.py` stays as the record of the Whisper measurements, with a docstring note that it now needs faster-whisper 1.2.1 installed by hand. `diag_fastconformer.py` still works: the helpers it imports from `diag_asr.py` do not need faster-whisper. Alternative: keep it installed so `diag_asr.py` runs from the pinned environment (not chosen).
+- **N8 Tests:**
+  - T1.2: Armenian text on the fixture, model missing, `warm_up`, loads on CUDA with VRAM above 0, and the D33 guard. The guard test runs in a subprocess that imports onnxruntime first and expects `AsrError`.
+  - The `token_cap` test is removed.
+  - T6: "missing model" names the FastConformer model.
+- **N9 VAD cap (D26 7 s):** measured first. `diag_fastconformer.py --seg-cap 7,10,12`, fp32 only, the same mechanism as `diag_asr.py` H2: CER, max ASR, VRAM. Zaven chooses the cap, and T1.1's cap test follows it.
+- **N10 Steps:**
+  - **F6a** cap measurement
+  - **F6b** code (`asr.py`, `app.py`, `conftest.py`, tests, requirements)
+  - **F6c** pytest plus T2 on the turn files in demo conditions (pass = every line ≤ 5 s)
+  - **F6d** records (L11, D12, D26, TEST.md wording); the README later (S7c)
+- **N11 D32 check:** not run. Whisper is no longer the app ASR, so F6c's pytest and T2 replace it.
 
 ---
 

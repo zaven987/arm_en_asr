@@ -2,7 +2,7 @@
 
 > **How to use this file.** Every test entry, every pass criterion and every status change is agreed with Zaven **before** it is written here (working rule 10). Zaven runs all tests on his laptop; when Claude needs the output, Zaven saves it to `command_outputs/<name>.txt` and sends the path (rules 8–9). Decisions referenced as D# are in `DECISIONS.md`.
 
-- Created: 2026-10-29 · Last updated: 2026-11-05
+- Created: 2026-10-29 · Last updated: 2026-11-06
 
 ---
 
@@ -229,3 +229,4 @@ Rows are only ever appended, never edited. One row per run.
 | 2026-11-05 | T6 | S6 code (`app.py`, `tests/test_cli.py`; committed after the run) | plain `python -m pytest -v`; live on a real PulseAudio source, no person; real diarizer connected (D27 S6) | 8/8 T6 tests passed (the earlier 6 without the refusal test, `test_missing_model` now also names the speaker model, plus `--system-wav` run accepted and exits 0 with a `Speaker 1:` line, plus `SPEAKER_MODEL` = `diarizer.MODEL_FILE`); whole default suite 61 passed in 18.06 s | passed | `command_outputs/m6_s6_pytest.txt` |
 | 2026-11-05 | — (M6 S6 measurement: `sys_01` through the app, not T2) | same | `python app.py --system-wav eval/clips/sys_01.wav` under `/usr/bin/time -v`, real-time feed, real diarizer, ASR on GPU; Zoom tab not confirmed | 16 lines; labels the same as T1.6 (16/16, 2 speakers); latency median ≈ 1.4 s, max 5.2 s, 2 lines > 5 s (one cut by the token cap, one waiting behind it), 4/16 cut; peak RSS 1070 MB; exit 0 | measurement | `command_outputs/m6_s6_sys01.txt`; non-stop speech, so not T2; S7's T2 on the turn files is the check (D27 S6 H7) |
 | 2026-11-05 | T2 | S6 code + S6 records | `python app.py --mic-wav eval/clips/turns_mic.wav --system-wav eval/clips/turns_sys.wav` under `/usr/bin/time -v`, real-time feed, N = 1, ASR on GPU, real diarizer (D27 S6); Zoom tab open, plugged in | 28 lines (Me 12, Speaker 1 9, Speaker 2 7); latency median 1.3 s, p95 1.6 s, max 1.6 s; 0 lines > 5 s; 1/28 cut; peak RSS 1079 MB; RAM available 3270 → 2764 MB; swap 2034 → 2047 of 2047 MB (full) | passed | `command_outputs/m6_s7_t2_turns.txt`; swap full before the start (R17) |
+| 2026-11-06 | T1.6 | F4 files (`requirements-fc.*`, `check_fc_gpu.py`; commit not confirmed) | `.venv-fc` (sherpa-onnx 1.13.8 CUDA build; diarizer on the CPU), `pytest -v tests/test_diarizer.py` and `pytest -m eval tests/test_diarizer.py -v -s` | 19/19 default diarizer tests passed; `mic_01`–`03` 1 speaker each; `sys_01` 16/16 (100 %), 2 speakers, short 3/3, not ready 0 | passed | `command_outputs/m7_f4b_diarizer.txt`, `m7_f4b_t16.txt`; same 19 tests as `m6_s5b_pytest.txt` (the 2026-11-05 row's "20 diarizer tests" was a miscount) |

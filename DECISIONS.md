@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F3 done, F4)
+- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F4 done, D33)
 
 ---
 
@@ -71,7 +71,8 @@
 - **M6 S6 done (2026-11-05):** the app builds the real diarizer when a system input is given; `--system` / `--system-wav` accepted; the speaker-embedding model is checked always; no diarizer warm-up; 61 tests pass, T6 passed (8/8). `sys_01` through the app: labels as T1.6 (16/16), max latency 5.2 s (2/16 lines > 5 s, not T2), peak RSS 1070 MB (D27 S6; `command_outputs/m6_s6_pytest.txt`, `m6_s6_sys01.txt`).
 - **M6 S7a done (2026-11-05):** T2 passed on the turn files with the real diarizer (Zoom tab open, plugged in): 28 lines, median 1.3 s, p95 1.6 s, max 1.6 s, 0 > 5 s; peak RSS 1079 MB; swap full (R17) (D27 S7; `command_outputs/m6_s7_t2_turns.txt`). **M5 and M6 done.**
 - **M7 beam sweep done (2026-11-05):** Whisper small, cuda `int8_float16`, beams 1 / 2 / 3 / 5 on `mic_01`–`03` + `sys_01` (47 segments; `command_outputs/m7_beam_sweep.txt`, `diag_asr.py` variants b2 / b3): ASR max per segment 1.0 / 1.3 / 1.4 / 1.6 s, loops 7 / 3 / 2 / 2 of 47, mean CER 41.5 / 36.1 / 31.9 / 32.4 %. Stage B (turn test) not run; replaced by the D32 check (pytest + T2 on the turn files).
-- **Next step:** D31 F4: `.venv-fc` (compile, install), `scripts/check_fc_gpu.py`, T1.6 in `.venv-fc` (F1–F3 done 2026-11-06; handover 016). D32 check (plain pytest suite, T2 on the turn files) still to be reported. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
+- **M7 D31 F4 done (2026-11-06):** `.venv-fc`; FastConformer CTC on the GPU via sherpa-onnx CUDA: fp32 0.023 s / int8 0.131 s for 4.68 s, both CER 0 % on the fixture; order rule D33; T1.6 unchanged (`command_outputs/m7_f4e_check.txt`).
+- **Next step:** D31 F5: `scripts/diag_fastconformer.py` (plan to be agreed). D32 check (plain pytest suite, T2 on the turn files) still to be reported. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -502,6 +503,12 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
 - Addition (Zaven, 2026-11-06): **F3 agreed (E1–E9):** `scripts/export_fastconformer.py` (runs in `.venv-nemo`): E1 writes `<out>.part`, renamed at the end; refuses an existing `<out>`; offline. E2 `ASRModel.restore_from` on the CPU; must be the hybrid RNNT+CTC BPE class. E3 reads sample rate (must be 16 000), features, `normalize`, subsampling factor from the model config. E4 exports the CTC head only (`set_export_config({"decoder_type": "ctc"})`); ONNX output size = vocabulary + 1. E5 `tokens.txt`, `<blk>` last. E6 metadata `vocab_size`, `normalize_type`, `subsampling_factor` (from E3) + `model_type`, `version`, `url`, `comment`. E7 `model.int8.onnx` by `quantize_dynamic` (QUInt8). E8 self-check on `speech_short.wav`: fp32 ONNX text must equal NeMo's own CTC output (else fail); int8 text + CER vs fp32 reported. E9 sizes, SHA-256, time, peak RSS. `download_models.py` `export_fastconformer()` runs it (`convert_opus` pattern) into `models/fastconformer-hy-ctc/`.
 - Addition (Zaven, 2026-11-06): **F3 done:** `models/fastconformer-hy-ctc/`: `model.onnx` 458 161 306 bytes (SHA-256 `00df8494b96b15536018254a90af1e1173b5bad9c6de4a152467cbc610036dfb`), `model.int8.onnx` 131 652 696 bytes (`8be35ea8859604738ac2c4f9dcfc84a7b648acae085984c6a784dec45ac4c65a`), `tokens.txt` 1025 lines (`221b1dd978a2d8f4fe8a8e185e400c09f98d71c887de9099cb2f1154d321416b`). Metadata: vocab_size 1025, normalize_type per_feature, subsampling_factor 8. E8: NeMo = ONNX fp32 = ONNX int8 text on `speech_short.wav` (int8 vs fp32 CER 0.0 %); CPU 0.14 s (fp32) / 0.07 s (int8) for 4.7 s. Peak RSS 3186 MB, 17 s. The int8 step's "unsupported type to quantize" warnings are int64 shape tensors, skipped on purpose (`command_outputs/m7_f3_export.txt`).
 - Addition (Zaven, 2026-11-06): **F4 files agreed:** `requirements-fc.in` (= `requirements.in` with `sherpa-onnx==1.13.8+cuda12.cudnn9.onnxruntime1.28.2` via `--find-links`, plus `nvidia-cuda-runtime-cu12`, `nvidia-cufft-cu12`, `nvidia-curand-cu12`, which onnxruntime's CUDA provider needs); `.venv-fc/` gitignored; `scripts/check_fc_gpu.py` C1–C6: C1 CUDA libraries the app's way + cudart / cuFFT / cuRAND; C2 `ldd` on the CUDA provider library, no "not found"; C3 Silero (onnxruntime 1.23.2) + sherpa-onnx (1.28.2) in one process; C4 `from_nemo_ctc(provider="cuda")` fp32 + int8 on `speech_short.wav`: text, CER vs E8 (reported), first call + median of 5; C5 no silent CPU fallback: this process's VRAM must be > 0; C6 RSS, VRAM. Then T1.6 (default + `eval`) in `.venv-fc`: same result expected.
+- Addition (Zaven, 2026-11-06): **F4 done.** `.venv-fc` from `requirements-fc.txt` (43 packages; sherpa-onnx `1.13.8+cuda12.cudnn9.onnxruntime1.28.2` from `--find-links`, no `sherpa-onnx-core`; added nvidia-cuda-runtime-cu12 12.9.79, -cufft-cu12 11.4.1.4, -curand-cu12 10.3.10.19, and -nvjitlink-cu12 12.9.86 via cuFFT).
+  - `requirements-fc.txt` is compiled with **`--emit-find-links`**. Without it, `uv pip compile` leaves out the `--find-links` line, so the install cannot find the CUDA wheel (`command_outputs/m7_f4_install.txt`). The same applies to `requirements.txt` in F6.
+  - **The first `check_fc_gpu.py` run crashed** with a segmentation fault in `from_nemo_ctc(provider="cuda")` after Silero had run (onnxruntime 1.23.2). Without onnxruntime 1.23.2 in the process, the CUDA recognizer worked. With the CUDA recognizer created first, Silero and a second CUDA recognizer worked too. Result: order rule D33 (`m7_f4c_check.txt`, `m7_f4c_sherpa_cuda.txt`, `m7_f4d_order.txt`). `check_fc_gpu.py` gets step R: both recognizers are created before Silero, with the D33 guard. C5 is stricter: each recognizer's creation must raise the process's VRAM.
+  - **Result** (`m7_f4e_check.txt`, `CHECK OK`): C1–C3 OK (CUDA provider: 0 libraries not found). fp32: load 1.2 s, +580 MB VRAM, median 0.023 s for the 4.68 s fixture. int8: load 0.8 s, +76 MB VRAM, median 0.131 s. Both give exactly the E8 text (CER 0.0 %). End: VRAM 742 MB, RSS 1236 MB.
+  - **Note:** int8 on the GPU is slower than fp32 and than int8 on the CPU (F3: 0.07 s), and adds little VRAM. Its quantized operations most likely run on the CPU inside onnxruntime (placement is per operation; C5 cannot see it). F5 measures both.
+  - **T1.6 in `.venv-fc`:** the same as before: 19 default diarizer tests pass; `mic_01`–`03` 1 speaker each; `sys_01` 16/16, 2 speakers, short segments 3/3 (`m7_f4b_diarizer.txt`, `m7_f4b_t16.txt`).
 
 **D32 — Whisper small decodes with `beam_size=5` (replaces D26's `beam_size=1`).** (Zaven, 2026-11-05)
 - What: `asr.py` `BEAM_SIZE = 5`. Unchanged: `without_timestamps=True`, `temperature=0`, `repetition_penalty` 1.1, the D26 token cap with ` ...`, the 7 s VAD cap, cuda `int8_float16`.
@@ -510,6 +517,27 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
 - Alternatives: beam 3 (mean CER 31.9 %, max 1.4 s, loops 2/47; almost the same; not chosen: Zaven chose 5); beam 2 (36.1 %) and beam 1 (41.5 %) rejected: less accurate.
 - Check (replaces the sweep's stage B): plain pytest suite (T1.2, T6), then T2 on the turn files in demo conditions; pass = every line ≤ 5 s. TEST.md rows are agreed after the run.
 - Notes: no test and nothing in `app.py` refers to the beam size; README line 270 (`beam_size=1`) goes on the postponed S7c list.
+
+**D33 — Two onnxruntime builds in one process: the first sherpa-onnx CUDA recognizer is created before onnxruntime 1.23.2 is imported.** (Zaven, 2026-11-06)
+- What: any process that runs Silero (onnxruntime 1.23.2, D8 / D24) and FastConformer on the GPU (the sherpa-onnx CUDA build with its own onnxruntime 1.28.2, D31) creates its **first** CUDA recognizer before `onnxruntime` is imported. After that, Silero and more CUDA recognizers work in any order.
+  - Guard (working rule 2): if `"onnxruntime"` is already in `sys.modules` when the first CUDA recognizer is created, stop with an error naming D33. Never a segfault, never a CPU fallback.
+  - The rule says "imported" rather than "used". That is stricter than the evidence requires, but it is simple to check.
+- Applies to:
+  - `scripts/check_fc_gpu.py` (done, F4)
+  - `scripts/diag_fastconformer.py` (F5)
+  - the app after F6: the FastConformer `Asr` is built, with the guard, before `audio_capture` / Silero is imported. F6 says how `app.py`'s imports and startup order (D11 Q1) change for this.
+- Why (F4 diagnosis, `command_outputs/m7_f4c_check.txt`, `m7_f4c_sherpa_cuda.txt`, `m7_f4d_order.txt`):
+  - with Silero run first, `from_nemo_ctc(provider="cuda")` crashed (exit 139)
+  - without onnxruntime 1.23.2 in the process, it worked
+  - with the recognizer first, Silero and a second recognizer (int8) worked
+
+  The most likely cause is that both onnxruntime builds use a provider library with the same file name, and whichever loads first is reused. This is not proven; the rule rests on what was seen.
+- Alternatives:
+  - Silero through sherpa-onnx's own VAD (not chosen: a VAD rewrite; its segmentation differs from D8, and T1.1 would change)
+  - one model in a separate process (rejected: breaks D1)
+  - onnxruntime 1.28 for Silero (not possible: 1.23.2 is the last version for Python 3.10, D14)
+  - a uv-managed Python 3.11+ (not chosen: a new environment and re-pinning everything)
+- Risk: the rule depends on import order. A later change that imports onnxruntime earlier stops loudly at the guard.
 
 ---
 

@@ -74,7 +74,8 @@
 - **M7 D31 F4 done (2026-11-06):** `.venv-fc`; FastConformer CTC on the GPU via sherpa-onnx CUDA: fp32 0.023 s / int8 0.131 s for 4.68 s, both CER 0 % on the fixture; order rule D33; T1.6 unchanged (`command_outputs/m7_f4e_check.txt`).
 - **M7 D31 F5 done (2026-11-06):** FastConformer fp32 mean CER 9.4 % vs Whisper beam 5 32.4 %, max ASR 0.118 s vs 1.6 s (`command_outputs/m7_f5_diag_fc.txt`).
 - **M7 D31 F6 decided (2026-11-06): D34:** the app ASR becomes FastConformer CTC fp32 on the GPU; faster-whisper removed; the D32 check is not run (replaced by F6c).
-- **Next step:** D34 F6a: VAD cap measurement (`diag_fastconformer.py --seg-cap 7,10,12`), then F6b code. M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
+- **D34 F6a done (2026-11-06):** VAD cap stays 7 s; 10 s (mean CER 8.5 % vs 9.4 %) goes to M8 (`command_outputs/m7_f6a_segcap.txt`).
+- **Next step:** D34 F6b code (`asr.py`, `app.py`, `conftest.py`, tests, requirements). M6 S7c README sections (handover 010 list) postponed. T3 / T4 later (Zaven, 2026-11-01).
 - **Open / pending:** client's real setup (section 7) to be confirmed after the walking skeleton.
 
 ---
@@ -579,6 +580,7 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
   - **F6c** pytest plus T2 on the turn files in demo conditions (pass = every line ≤ 5 s)
   - **F6d** records (L11, D12, D26, TEST.md wording); the README later (S7c)
 - **N11 D32 check:** not run. Whisper is no longer the app ASR, so F6c's pytest and T2 replace it.
+- Addition (Zaven, 2026-11-06): **F6a done** (`command_outputs/m7_f6a_segcap.txt`; fp32, demo conditions). Caps 7 / 10 / 12 s: 47 / 36 / 32 segments; mean CER 9.4 / 8.5 / 8.7 % (mic_01 8.2 / 7.5 / 6.5, mic_02 5.0 / 5.0 / 5.2, mic_03 6.9 / 6.2 / 6.6, sys_01 17.4 / 15.3 / 16.5 %); max ASR 0.124 / 0.134 / 0.201 s; VRAM 1102 MB for all; the 7 s run repeats F5. **The cap stays 7 s** (D26) for F6: the gain is about 1 point on four clips (R13), and a longer cap would also change the diarizer's segments (`THRESHOLD` fitted at 7 s, L14), MT on longer input (D5, M1) and how often lines appear. The cap goes to M8, where 10 s is the candidate, to be tested with T1.6 and MT. T1.1 is unchanged.
 
 ---
 

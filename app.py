@@ -39,6 +39,10 @@ EXIT_INTERRUPTED = 130   # Q6: Ctrl+C
 # D27 S6 H3: speaker-embedding model, under MODELS_DIR. Must equal diarizer.MODEL_FILE (checked by T6);
 # written here so the early checks and --list-devices do not import sherpa-onnx.
 SPEAKER_MODEL = Path("speaker-embedding") / "wespeaker_en_voxceleb_resnet34.onnx"
+# D34: FastConformer CTC folder under MODELS_DIR (written by scripts/download_models.py, D31 F3).
+# File names must equal asr.MODEL_FILE / asr.TOKENS_FILE (checked by T6), written here for the same reason.
+ASR_DIR = Path("fastconformer-hy-ctc")
+ASR_FILES = ("model.onnx", "tokens.txt")
 
 
 class AppError(Exception):
@@ -47,14 +51,10 @@ class AppError(Exception):
 
 def required_model_files(models_dir: Path) -> list[tuple[str, Path]]:
     """(model name, file) pairs the app needs. Written by scripts/download_models.py."""
-    whisper = models_dir / "faster-whisper-small"
     opus = models_dir / "opus-mt-hy-en-ct2-int8"
     return [
         ("Silero VAD v6.2.1", models_dir / "silero_vad.onnx"),
-        ("faster-whisper small", whisper / "model.bin"),
-        ("faster-whisper small", whisper / "config.json"),
-        ("faster-whisper small", whisper / "tokenizer.json"),
-        ("faster-whisper small", whisper / "vocabulary.txt"),
+        *(("FastConformer CTC (Armenian)", models_dir / ASR_DIR / name) for name in ASR_FILES),  # D34
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "model.bin"),
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "config.json"),
         ("opus-mt-hy-en (CTranslate2 int8)", opus / "shared_vocabulary.json"),
@@ -175,7 +175,17 @@ def info(message: str) -> None:
 def run_session(args: argparse.Namespace) -> int:
     """Q1-Q6: load models, start pipeline + capture + stdin reader, wait, shut down cleanly."""
     # Imported here, so --list-devices and the early checks stay fast.
+    # D33 / D34 N4: the ASR (first sherpa-onnx CUDA recognizer) is built BEFORE audio_capture is
+    # imported, because audio_capture imports onnxruntime (Silero). Everything else comes after.
     from arm_en_asr.asr import Asr, AsrError
+
+    try:
+        info("loading models…")
+        asr = Asr(MODELS_DIR / ASR_DIR, num_workers=N_ASR_WORKERS)
+        asr.warm_up()                    # W2 (D26 addition): first real segment is not slower
+    except AsrError as e:
+        raise AppError(str(e)) from None
+
     from arm_en_asr.audio_capture import (Capture, CaptureError, ParecSource, Segmenter, SileroVad,
                                           WavSource, new_id_counter)
     from arm_en_asr.diarizer import Diarizer, DiarizerError
@@ -190,13 +200,10 @@ def run_session(args: argparse.Namespace) -> int:
                ("system", args.system if live else args.system_wav))
               if value is not None]
 
-    # Q1: models, then pipeline, then capture, then commands.
+    # Q1: models (ASR above, D33), then pipeline, then capture, then commands.
     try:
-        info("loading models…")
         # One SileroVad per device: the model keeps state between windows.
         vads = {device: SileroVad(MODELS_DIR / "silero_vad.onnx") for device, _ in wanted}
-        asr = Asr(MODELS_DIR / "faster-whisper-small", num_workers=N_ASR_WORKERS)
-        asr.warm_up()                    # W2 (D26 addition): first real segment is not slower
         mt = Mt(MODELS_DIR / "opus-mt-hy-en-ct2-int8")
         # H1 (D27 S6): the diarizer is built only with a system input (no RAM, no thread otherwise).
         # No warm-up (H4): its first call measured no slower than later ones (m6_s4_embed_resnet34.txt).

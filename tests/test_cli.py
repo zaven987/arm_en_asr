@@ -8,6 +8,8 @@ only ends by itself with exit 0 (loads the models, needs the GPU, D30).
 M6 S6 (D27 S6, H3, H5): the refusal test is replaced by "a short --system-wav run is accepted and
 exits 0" (real diarizer on the committed fixture speech_short.wav, no eval data, D22); the missing-
 model error also names the speaker-embedding model; app.SPEAKER_MODEL equals diarizer.MODEL_FILE.
+M7 D34 (F6b): the missing-model error names FastConformer CTC (no faster-whisper); app.ASR_FILES
+equals asr.MODEL_FILE / TOKENS_FILE.
 """
 
 from __future__ import annotations
@@ -91,9 +93,10 @@ def test_missing_model(tmp_path, monkeypatch, capsys):
     assert exc.value.code != 0
     err = capsys.readouterr().err
     assert "model files missing" in err
-    for name in ("Silero VAD", "faster-whisper small", "opus-mt-hy-en",
+    for name in ("Silero VAD", "FastConformer CTC", "opus-mt-hy-en",   # D34: FastConformer
                  "WeSpeaker ResNet34 speaker embedding"):   # H3: checked always
         assert name in err, f"error does not name {name}"
+    assert "faster-whisper" not in err   # D34 N7: Whisper is gone
     assert str(empty) in err
     # No download attempted: the app forces offline mode and creates nothing.
     assert os.environ["HF_HUB_OFFLINE"] == "1"
@@ -104,6 +107,12 @@ def test_speaker_model_path_matches_diarizer():
     """H3: app.py writes the path itself (no sherpa-onnx import in the early checks); it must not drift."""
     from arm_en_asr.diarizer import MODEL_FILE
     assert load_app().SPEAKER_MODEL == MODEL_FILE
+
+
+def test_asr_files_match_asr_module():
+    """D34: app.py names the FastConformer files itself (early checks); they must equal asr.py's."""
+    from arm_en_asr import asr
+    assert load_app().ASR_FILES == (asr.MODEL_FILE, asr.TOKENS_FILE)
 
 
 # ---------------------------------------------------------------- S8: stdin commands (Q8)

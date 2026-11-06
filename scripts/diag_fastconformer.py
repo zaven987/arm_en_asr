@@ -19,6 +19,12 @@ P5  per clip: CER of the joined text; per model one summary line: total / median
 P6  a missing clip, model or reference CSV stops the script with ERROR (working rule 2); an empty
     output on one segment is counted, not a failure.
 P7  no "loops" column: CTC cannot loop (D25).
+S1 (D34 N9 / F6a, 2026-11-06): --seg-cap 7,10,12 repeats the run with other VAD segment caps (D8,
+    D26), the same mechanism as diag_asr.py H2: it sets audio_capture.CAP for this script only
+    (Segmenter reads it at run time); audio_capture.py is not changed. Allowed 1-15 s (diag_asr.py
+    allowed only up to 7 s, because the cap could then only be shortened). The clips are cut again
+    for each cap; every summary line starts with its cap.
+    .venv-fc/bin/python scripts/diag_fastconformer.py eval/clips/mic_0{1,2,3}.wav eval/clips/sys_01.wav --models fp32 --seg-cap 7,10,12 > command_outputs/m7_f6a_segcap.txt 2>&1
 """
 from __future__ import annotations
 
@@ -82,11 +88,11 @@ def decode(rec, audio) -> tuple[str, float]:
     return stream.result.text.strip(), time.monotonic() - t
 
 
-def run_model(name: str, rec, clips, diag) -> str:
-    """P3-P5: one model on all clips; returns the summary line."""
+def run_model(name: str, rec, clips, diag, seg_cap: float) -> str:
+    """P3-P5: one model on all clips at one segment cap; returns the summary line."""
     first = clips[0][2][0]
     decode(rec, first.audio)                                 # P3 warm-up, not counted
-    print(f"\n=== FastConformer CTC {name}, cuda, num_threads {NUM_THREADS}")
+    print(f"\n=== segment cap {seg_cap:g} s, FastConformer CTC {name}, cuda, num_threads {NUM_THREADS}")
     print(f"{'clip':7} {'seg':>3} {'len_s':>6} {'asr_s':>6} {'chars':>5}  text (first 60 chars)")
     times, empties, cers = [], 0, []
     for wav, ref_text, segs in clips:
@@ -102,7 +108,7 @@ def run_model(name: str, rec, clips, diag) -> str:
         cers.append((wav.stem, c))
         print(f"{wav.stem}: CER {100 * c:.1f} %", flush=True)
     mean_cer = statistics.mean(v for _, v in cers)
-    line = (f"FastConformer CTC {name:4} cuda  total ASR {sum(times):6.2f} s  "
+    line = (f"cap {seg_cap:4g} s  FastConformer CTC {name:4} cuda  total ASR {sum(times):6.2f} s  "
             f"median {statistics.median(times):.3f} s  max {max(times):.3f} s  "
             f"segments {len(times)}  empty {empties}  CER "
             + ", ".join(f"{k} {100 * v:.1f} %" for k, v in cers)
@@ -115,7 +121,17 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("clips", nargs="+", type=Path, help="16 kHz mono 16-bit WAVs in eval/clips/")
     ap.add_argument("--models", default="fp32,int8", help="comma-separated: fp32, int8 (default both)")
+    ap.add_argument("--seg-cap", default="7",
+                    help="S1: comma-separated VAD segment caps in seconds, 1-15 (default 7, the app's)")
     args = ap.parse_args()
+
+    try:
+        seg_caps = [float(x) for x in args.seg_cap.split(",")]
+    except ValueError:
+        fail(f"--seg-cap must be numbers in seconds, got {args.seg_cap!r}")
+    for c in seg_caps:
+        if not 1.0 <= c <= 15.0:
+            fail(f"--seg-cap {c:g} s is outside 1-15 s")
 
     names = [n.strip() for n in args.models.split(",") if n.strip()]
     if not names or any(n not in fc.MODELS for n in names) or len(set(names)) != len(names):
@@ -131,13 +147,20 @@ def main() -> None:
 
     import diag_asr as diag                                  # P2: now Silero / onnxruntime may load
     import onnxruntime
-    print(f"# onnxruntime {onnxruntime.__version__} (Silero); segment cap "
-          f"{diag.audio_capture.CAP_S:g} s", flush=True)
-    clips = diag.load_clips(args.clips)
-    n_segs = sum(len(segs) for _, _, segs in clips)
-    print(f"# {n_segs} segments in {len(clips)} clips | {diag.mem_text('cuda')}", flush=True)
+    print(f"# onnxruntime {onnxruntime.__version__} (Silero); app segment cap "
+          f"{diag.audio_capture.CAP_S:g} s; caps run here: " + ", ".join(f"{c:g} s" for c in seg_caps),
+          flush=True)
 
-    summary = [run_model(name, recognizers[name], clips, diag) for name in names]
+    summary = []
+    for seg_cap in seg_caps:
+        diag.audio_capture.CAP = int(seg_cap * diag.SR)      # S1: this script only (as diag_asr H2)
+        print(f"\n##### segment cap {seg_cap:g} s", flush=True)
+        clips = diag.load_clips(args.clips)
+        n_segs = sum(len(segs) for _, _, segs in clips)
+        longest = max(len(s.audio) for _, _, segs in clips for s in segs) / FC_SR
+        print(f"# {n_segs} segments in {len(clips)} clips, longest {longest:.2f} s | "
+              f"{diag.mem_text('cuda')}", flush=True)
+        summary += [run_model(name, recognizers[name], clips, diag, seg_cap) for name in names]
     print("\n=== summary")
     for line in summary:
         print(line)

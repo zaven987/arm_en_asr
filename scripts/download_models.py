@@ -1,5 +1,7 @@
 """One-time model download and conversion (D15, D23, D24; speaker embeddings D27 S4 J2;
-FastConformer source D31 F2, ONNX export D31 F3).
+FastConformer source D31 F2, ONNX export D31 F3). D34 N7 (2026-11-06): faster-whisper small is no
+longer downloaded; the app ASR is FastConformer CTC. An existing models/faster-whisper-small/ is
+left alone (not used by the app).
 
 Run once from the repo root, with .venv active and internet on:
     python scripts/download_models.py
@@ -19,11 +21,6 @@ from huggingface_hub import hf_hub_download, snapshot_download
 
 ROOT = Path(__file__).resolve().parent.parent  # repo root (script lives in scripts/)
 MODELS = ROOT / "models"
-
-# faster-whisper small, CTranslate2 format (D3)
-WHISPER_REPO = "Systran/faster-whisper-small"
-WHISPER_REV = "536b0662742c02347bc0e980a01041f333bce120"
-WHISPER_DIR = MODELS / "faster-whisper-small"
 
 # opus-mt-hy-en original checkpoint, input for the conversion (D5, D23)
 OPUS_REPO = "Helsinki-NLP/opus-mt-hy-en"
@@ -87,17 +84,6 @@ def fail(msg: str) -> None:
 
 def dir_size_mb(path: Path) -> float:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
-
-
-def download_whisper() -> None:
-    if (WHISPER_DIR / "model.bin").exists():
-        print(f"[whisper] already present, skipping: {WHISPER_DIR}")
-        return
-    print(f"[whisper] downloading {WHISPER_REPO}@{WHISPER_REV[:8]} ...")
-    snapshot_download(WHISPER_REPO, revision=WHISPER_REV, local_dir=WHISPER_DIR)
-    if not (WHISPER_DIR / "model.bin").exists():
-        fail(f"[whisper] model.bin missing after download in {WHISPER_DIR}")
-    print(f"[whisper] done ({dir_size_mb(WHISPER_DIR):.0f} MB)")
 
 
 def download_opus_source() -> None:
@@ -229,7 +215,6 @@ def export_fastconformer() -> None:
 
 def main() -> None:
     MODELS.mkdir(exist_ok=True)
-    download_whisper()
     download_opus_source()
     convert_opus()
     download_silero()

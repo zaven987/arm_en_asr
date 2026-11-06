@@ -1,15 +1,20 @@
 # requirements.in: packages we use directly (edited by hand).
-# requirements.txt is generated from this by `uv pip compile`. Never edit it by hand.
-# Target: Python 3.10 (D14).
+# requirements.txt is generated from this by `uv pip compile --emit-find-links` (D31 F4: without
+# that flag the --find-links line below is left out and the CUDA sherpa-onnx wheel cannot be found).
+# Never edit requirements.txt by hand. Target: Python 3.10 (D14).
+# D34 (2026-11-06): ASR is FastConformer CTC via the CUDA build of sherpa-onnx; faster-whisper removed (N7).
+--find-links https://k2-fsa.github.io/sherpa/onnx/cuda.html
 
-faster-whisper==1.2.1   # ASR skeleton model (D3). Latest release
-ctranslate2==4.8.4      # runs opus-mt-hy-en int8 (D5); faster-whisper also uses it
+ctranslate2==4.8.4      # runs opus-mt-hy-en int8 (D5); also gives the CUDA device check in asr.py
 sentencepiece==0.2.2    # tokenizer for the opus-mt model at runtime (D5), so no transformers needed at runtime
 onnxruntime==1.23.2     # Silero VAD ONNX (D8). Last version with Python 3.10 wheels
 numpy==2.2.6            # audio arrays. Last version for Python 3.10
-sherpa-onnx==1.13.8     # speaker embeddings for the diarizer, CPU (D9, D27 S4 J1). Last 1.x with Python 3.10 wheels
+sherpa-onnx==1.13.8+cuda12.cudnn9.onnxruntime1.28.2   # D34: FastConformer CTC on the GPU (provider cuda) and the diarizer's speaker embeddings on the CPU (D27 S4 J1); CUDA build from --find-links, not PyPI (D31)
 huggingface-hub         # downloads in download_models.py (D15). compile picks the exact version
 psutil==7.2.2           # RSS/swap measurement for the M1 RAM check and T4
 pytest==9.0.3           # tests (TEST.md)
-nvidia-cublas-cu12==12.9.3.13  # cuBLAS for CUDA 12: Whisper on the MX550 GPU (D30); pulls in nvrtc
-nvidia-cudnn-cu12==9.28.0.42   # cuDNN 9 for CUDA 12: Whisper on the MX550 GPU (D30)
+nvidia-cublas-cu12==12.9.3.13        # cuBLAS for CUDA 12 (D30); pulls in nvrtc
+nvidia-cudnn-cu12==9.28.0.42         # cuDNN 9 for CUDA 12 (D30)
+nvidia-cuda-runtime-cu12==12.9.79    # D34: cudart for onnxruntime's CUDA provider (version resolved in D31 F4)
+nvidia-cufft-cu12==11.4.1.4          # D34: cuFFT for onnxruntime's CUDA provider (D31 F4); pulls in nvjitlink
+nvidia-curand-cu12==10.3.10.19       # D34: cuRAND for onnxruntime's CUDA provider (D31 F4)

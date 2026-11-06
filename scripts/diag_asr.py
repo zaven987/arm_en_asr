@@ -1,5 +1,12 @@
 """Latency fix diagnosis: Whisper speed / repetition-loop variants (handover 008; G1-G8, 2026-11-01).
 
+D34 N7 (2026-11-06): kept as the record of the Whisper measurements. The app ASR is now
+FastConformer CTC and faster-whisper is no longer in requirements.txt, so to run this script
+again, install faster-whisper==1.2.1 by hand and download models/faster-whisper-small/
+(Systran/faster-whisper-small at revision 536b0662742c02347bc0e980a01041f333bce120, D15).
+Its helpers (load_clips, cer, memory) are still used by diag_fastconformer.py and do not need
+faster-whisper. Note: "the same arguments as src/arm_en_asr/asr.py" below refers to asr.py before D34.
+
 Read-only for the app: imports the app's capture code so the segments are exactly the ones the
 app sees, and loads faster-whisper with the same arguments as src/arm_en_asr/asr.py, but never
 changes asr.py. Runs in .venv.

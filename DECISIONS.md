@@ -4,7 +4,7 @@
 
 - Architect / owner: Zaven
 - Team: Claude (writes files, proposes commands and commits)
-- Created: 2026-10-26 · Last updated: 2026-11-06 (M7 D31 F5 done, D34)
+- Created: 2026-10-26 · Last updated: 2026-11-07 (M7 WER, Whisper vs FastConformer)
 
 ---
 
@@ -303,6 +303,7 @@ scripts/                  # helper scripts, committed (added 2026-10-29):
                           #   export_fastconformer.py (D31 F3: FastConformer CTC head -> ONNX for sherpa-onnx, runs in .venv-nemo; added 2026-11-06)
                           #   check_fc_gpu.py (D31 F4: FastConformer CTC on the GPU via sherpa-onnx CUDA, runs in .venv-fc; added 2026-11-06)
                           #   diag_fastconformer.py (D31 F5: FastConformer CTC fp32 / int8 on the eval clips, same segments + CER as diag_asr.py, D33 order; runs in .venv-fc; added 2026-11-06)
+                          #   diag_wer.py (M7: Whisper vs FastConformer WER + CER on the same segments; runs in .venv-fc; added 2026-11-07)
 eval/fleurs/              # raw FLEURS files, gitignored (D19; added 2026-10-29)
 eval/meta/README.md       # data sources + licences (FLEURS CC-BY 4.0), committed (added 2026-10-30)
 DECISIONS.md  TEST.md  README.md  requirements.txt  .gitignore
@@ -581,6 +582,10 @@ requirements-fc.in  requirements-fc.txt         # added 2026-11-06 (D31 F4): mea
   - **F6d** records (L11, D12, D26, TEST.md wording); the README later (S7c)
 - **N11 D32 check:** not run. Whisper is no longer the app ASR, so F6c's pytest and T2 replace it.
 - Addition (Zaven, 2026-11-06): **F6a done** (`command_outputs/m7_f6a_segcap.txt`; fp32, demo conditions). Caps 7 / 10 / 12 s: 47 / 36 / 32 segments; mean CER 9.4 / 8.5 / 8.7 % (mic_01 8.2 / 7.5 / 6.5, mic_02 5.0 / 5.0 / 5.2, mic_03 6.9 / 6.2 / 6.6, sys_01 17.4 / 15.3 / 16.5 %); max ASR 0.124 / 0.134 / 0.201 s; VRAM 1102 MB for all; the 7 s run repeats F5. **The cap stays 7 s** (D26) for F6: the gain is about 1 point on four clips (R13), and a longer cap would also change the diarizer's segments (`THRESHOLD` fitted at 7 s, L14), MT on longer input (D5, M1) and how often lines appear. The cap goes to M8, where 10 s is the candidate, to be tested with T1.6 and MT. T1.1 is unchanged.
+- Addition (Zaven, 2026-11-07): **WER, Whisper vs FastConformer** (`scripts/diag_wer.py`, `.venv-fc`, `command_outputs/m7_wer_whisper_fc.txt`). Same 47 segments (7 s cap), clean-up as G5, words = cleaned text split on spaces; references 498 words / 3316 characters.
+  - **Whisper small**, D32 setting (cuda `int8_float16`, beam 5, `repetition_penalty` 1.1, token cap; loops 2/47): WER `mic_01` 85.5 %, `mic_02` 78.7 %, `mic_03` 84.4 %, `sys_01` 87.9 %, pooled 84.5 %, mean 84.1 %; CER 36.0 / 21.0 / 29.4 / 43.3 %, pooled 32.8 %, mean 32.4 %.
+  - **FastConformer CTC fp32**: WER 22.1 / 15.7 / 24.0 / 36.9 %, pooled 25.5 %, mean 24.7 %; CER 8.2 / 5.0 / 6.9 / 17.4 %, pooled 9.7 %, mean 9.4 %.
+  - The CERs repeat `m7_beam_sweep.txt` and F5. The FastConformer WER repeats `m7_fc_wer.txt` (2026-11-06, inline command).
 
 ---
 
